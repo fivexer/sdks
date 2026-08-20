@@ -14,6 +14,13 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Windows runners default to PowerShell, which cannot parse `if grep ...` — and, worse,
+        # only propagates the LAST command's exit code in a multi-line `run:`, so a failing test
+        # suite followed by a passing gate script reported success. Git Bash ships on the Windows
+        # image and GitHub invokes it with `-eo pipefail`, so every command's failure is fatal.
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -38,19 +45,25 @@ jobs:
       # post-processing to EVERY test, which measures the profiler rather than the test — so the
       # per-test time budget is checked on an uninstrumented run, and the coverage gate gets its
       # own instrumented run.
+      # PHPUnit is invoked through `php <entrypoint>` rather than the `vendor/bin` proxy:
+      # Composer writes a *nix shell script there beside a `.bat`, and which one Git Bash
+      # resolves on the Windows runner is not worth leaving to chance in CI.
       - name: Test and enforce the per-test time budget (200ms)
         working-directory: php
         run: |
-          vendor/bin/phpunit --no-coverage --log-junit build/junit.xml
+          php vendor/phpunit/phpunit/phpunit --no-coverage --log-junit build/junit.xml
           php bin/check-timings.php build/junit.xml 0.2
 
       - name: Coverage gate (90% line + branch)
         working-directory: php
         run: |
-          vendor/bin/phpunit
+          php vendor/phpunit/phpunit/phpunit
           php bin/check-coverage.php
 
+      # Greps the checked-out source, which is byte-identical on every matrix leg — one run
+      # answers for all of them, so this does not need to fan out across the OS/version grid.
       - name: Fail if any test is skipped
+        if: runner.os == 'Linux'
         working-directory: php
         run: |
           if grep -rn "markTestSkipped\|markTestIncomplete\|#\[Group('skip')\]" tests/; then

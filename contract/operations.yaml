@@ -27,6 +27,17 @@ planes:
         parses_quota_headers: true
         auto_idempotency_key: POST
         client: { ts: Fivexer, python: "Fivexer / AsyncFivexer", java: Fivexer, php: Fivexer }
+    supervisor:
+        auth: { header: Authorization, scheme: Bearer, credential: "sv_" }
+        parses_quota_headers: false
+        auto_idempotency_key: none
+        client:
+            {
+                ts: FivexerSupervisor,
+                python: "FivexerSupervisor / AsyncFivexerSupervisor",
+                java: FivexerSupervisor,
+                php: FivexerSupervisor,
+            }
     worker:
         auth: { header: Authorization, scheme: Bearer, credential: "wt_" }
         parses_quota_headers: false
@@ -829,6 +840,106 @@ groups:
                 Endpoint only — by the time a browser fires `pushsubscriptionchange` it has
                 already discarded the keys, so requiring them would break the case this exists for.
 
+    # ─────────────────────────── supervisor plane ───────────────────────────
+    - group: supervisor.session
+      plane: supervisor
+      operations:
+          - name: supervisor.entry
+            method: GET
+            path: /supervisor-auth/entry
+            response: "{ consoleUrl }"
+            notes: >-
+                Unauthenticated, and takes no workspace id on purpose: echoing back a
+                caller-supplied one would turn it into an existence oracle. `consoleUrl` is null
+                when the deployment declares no dashboard origin.
+          - name: supervisor.acceptInvite
+            method: POST
+            path: /supervisor-auth/accept
+            body: "{ token }"
+            response: SupervisorSession
+            notes: >-
+                Unauthenticated, single-use. Expired / already-used / revoked / never-existed all
+                answer with the same 400 `invalid_token` — any distinction tells a grinder which
+                half of a guess was right. `expiresAt` is epoch-MILLISECONDS here, not the ISO
+                string the worker plane sends; the clients mirror that rather than normalising it.
+          - name: supervisor.logout
+            method: POST
+            path: /supervisor-auth/logout
+            response: void
+            notes: >-
+                Also drops this supervisor's push subscriptions server-side — a handed-over phone
+                must stop buzzing with another crew's work, so this is one trust boundary.
+
+    - group: supervisor.board
+      plane: supervisor
+      operations:
+          - name: supervisor.me
+            method: GET
+            path: /supervisor/me
+            response: SupervisorMe
+            notes: "`teamKey: null` is a real answer — it means the whole workspace."
+          - name: supervisor.overview
+            method: GET
+            path: /supervisor/overview
+            response: SupervisorOverview
+            notes: >-
+                Counts, crew (busiest first) and parked work in one response. Deliberately one
+                endpoint rather than four: this is a phone on a depot floor, and four round trips
+                over a bad connection show a board that assembles itself in pieces. `parked` is
+                capped at 50 server-side for the same reason.
+
+    - group: supervisor.actions
+      plane: supervisor
+      operations:
+          - name: supervisor.unpark
+            method: POST
+            path: /supervisor/tasks/{id}/unpark
+            body: "{ resetEscalation?, resetSla?, resetSchedule? }"
+            response: "{ id, status: queued }"
+          - name: supervisor.setPriority
+            method: POST
+            path: /supervisor/tasks/{id}/priority
+            body: "{ priority }"
+            response: "{ id, priority }"
+          - name: supervisor.assign
+            method: POST
+            path: /supervisor/tasks/{id}/assign
+            body: "{ workerId, force? }"
+            response: "{ id, workerId, status: pending }"
+            notes: >-
+                Both ends are scope-checked: a crew lead cannot push their crew's work onto
+                another crew, or pull another crew's in. A matcher refusal surfaces as 400
+                `assign_blocked`; out-of-scope is a 403.
+          - name: supervisor.setAvailability
+            method: POST
+            path: /supervisor/workers/{workerId}/availability
+            body: "{ available, releaseBacklog? }"
+            response: SupervisorAvailabilityResult
+            notes: >-
+                Pausing never releases implicitly. `releaseBacklog` is the explicit redistribution
+                move and only *pending* work moves; accepted work stays with whoever accepted it.
+
+    - group: supervisor.push
+      plane: supervisor
+      operations:
+          - name: supervisor.pushConfig
+            method: GET
+            path: /supervisor/push/config
+            response: "{ enabled, publicKey }"
+          - name: supervisor.pushSubscribe
+            method: POST
+            path: /supervisor/push/subscriptions
+            body: "{ endpoint, keys: { p256dh, auth } }"
+            response: "{ ok: true }"
+            notes: >-
+                A bare ack, unlike the worker plane's `{ endpoint, createdAt }` — the supervisor
+                table is keyed by endpoint and has nothing else to hand back.
+          - name: supervisor.pushUnsubscribe
+            method: DELETE
+            path: /supervisor/push/subscriptions
+            body: "{ endpoint }"
+            response: void
+
 # ─────────────────────────── not SDK operations ───────────────────────────
 # Paths that exist under /v1 but are deliberately absent from every SDK. Listed so the
 # contract gate can tell "covered" from "forgotten" — an unlisted path is a gap, one here is
@@ -846,33 +957,6 @@ excluded:
       reason: >-
           Returns the HTML self-registration page behind a QR code. The SDK operation is
           worker.join (the POST).
-    - path: /v1/supervisor-auth/entry
-      methods: [GET]
-      sdk: false
-      reason: HTML entry page for the supervisor console.
-
-# ─────────────────────────── planned, not yet implemented ───────────────────────────
-# The supervisor plane: a third credential type (`sv_` session) alongside workspace keys and
-# worker tokens, for a crew lead who watches and unblocks work rather than doing it. The
-# console can already provision supervisors (FivexerAccount.console.supervisors), but no SDK
-# wraps the session plane itself. Tracked here so the gate reports it as a known gap rather
-# than silently passing. `sdk: planned` keeps these out of the parity checks until built.
-planned:
-    - group: supervisor
-      plane: supervisor
-      sdk: planned
-      paths:
-          - { method: GET, path: /v1/supervisor/me }
-          - { method: GET, path: /v1/supervisor/overview }
-          - { method: POST, path: /v1/supervisor/tasks/{id}/assign }
-          - { method: POST, path: /v1/supervisor/tasks/{id}/priority }
-          - { method: POST, path: /v1/supervisor/tasks/{id}/unpark }
-          - { method: POST, path: /v1/supervisor/workers/{workerId}/availability }
-          - { method: GET, path: /v1/supervisor/push/config }
-          - { method: POST, path: /v1/supervisor/push/subscriptions }
-          - { method: DELETE, path: /v1/supervisor/push/subscriptions }
-          - { method: POST, path: /v1/supervisor-auth/accept }
-          - { method: POST, path: /v1/supervisor-auth/logout }
 
 # ─────────────────────────── non-HTTP surface ───────────────────────────
 helpers:

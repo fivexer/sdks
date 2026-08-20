@@ -63,6 +63,7 @@ class ContractParityTest {
         map.put("joinLinks", JoinLinks.class);
         map.put("identities", Identities.class);
         map.put("worker", FivexerWorker.class);
+        map.put("supervisor", FivexerSupervisor.class);
         return map;
     }
 

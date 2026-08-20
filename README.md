@@ -19,15 +19,22 @@ All four cover the same surface. [`contract/operations.yaml`](contract/operation
 checklist they are held to, and each SDK has a contract-parity test that fails the build if an
 operation in that catalogue has no method behind it.
 
-## Two credential planes
+## Three credential planes
 
-The API has two kinds of caller, and each SDK models them as two separate clients so the type
-system enforces the boundary:
+The API has three kinds of caller, and each SDK models them as separate clients so the type
+system enforces the boundary — there is no way to reach another plane's routes by accident:
 
 | Plane | Credential | Client | What it can do |
 |---|---|---|---|
-| **Workspace** | `sk_test_` / `sk_live_` API key | `Fivexer` | Everything: create tasks, manage workers and skills, run workflows, read stats and decisions. Server-to-server only. |
-| **Worker portal** | `wt_…` session token | `FivexerWorker` | One worker's own queue: read it, accept/reject/complete, take breaks, see team presence. Cannot reach task creation or worker management. |
+| **Workspace** | `sk_test_` / `sk_live_` API key | `Fivexer` | Everything: create tasks, manage workers, teams and skills, run workflows, read stats and decisions. Server-to-server only. |
+| **Worker portal** | `wt_…` session token | `FivexerWorker` | One worker's own queue: read it, accept/reject/complete, take breaks, set their own skills and shift. Cannot reach task creation or worker management. |
+| **Supervisor** | `sv_…` session token | `FivexerSupervisor` | A crew lead who watches and unblocks: unpark, reprioritise, hand a task to a crew member, pause one. Scoped to one team or the whole workspace. Cannot create work or manage the roster. |
+
+The two session planes differ in how they end. A worker token **refreshes**; a supervisor
+session is redeemed from a single-use link and, once expired, can only be replaced by a new
+link — so `FivexerSupervisor` has no `refresh`, and its `expiresAt` is epoch-milliseconds where
+the worker plane's is an ISO-8601 string. Both are the server's shape, mirrored rather than
+normalised.
 
 ## Quickstart (Python)
 
@@ -117,11 +124,12 @@ their own casing (`tasks().suggestWorkers(...)`, `$client->tasks()->suggestWorke
 `history`, `team` and `breaks` need the control plane; a data-plane-only deployment answers
 `501 history_unavailable`.
 
+| **supervisor plane** | `entry` `accept_invite` `logout` `me` `overview` `unpark` `set_priority` `assign` `set_availability` `push_config` `push_subscribe` `push_unsubscribe` |
+
 All four SDKs cover the whole table — `contract/operations.yaml` is the shared checklist, and each
-SDK's `ContractParityTest` walks it. The one surface no SDK wraps yet is the **supervisor plane**
-(11 operations, a third credential type for crew leads who unblock work rather than do it); it is
-recorded under `planned:` in that file so the contract gate reports it rather than passing over it.
-Run `scripts/sync-contract.py --gaps-only` to see the current tally.
+SDK's `ContractParityTest` walks it. Run `scripts/sync-contract.py --gaps-only` for the current
+tally; at the last sync that was **138 of 140** `/v1` operations, the remaining two being HTML
+pages a browser opens (the worker invite and QR-join screens), not SDK surface.
 
 ### Pausing a worker
 

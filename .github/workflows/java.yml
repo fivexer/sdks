@@ -13,6 +13,13 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Windows runners default to PowerShell, which cannot parse `if grep ...` — and, worse,
+        # only propagates the LAST command's exit code in a multi-line `run:`, so a failing test
+        # suite followed by a passing gate script reported success. Git Bash ships on the Windows
+        # image and GitHub invokes it with `-eo pipefail`, so every command's failure is fatal.
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +42,10 @@ jobs:
       - name: Build, test, verify coverage (90% line + branch)
         working-directory: java
         run: ./gradlew check --no-daemon
+      # Greps the checked-out source, which is byte-identical on every matrix leg — one run
+      # answers for all of them, so this does not need to fan out across the OS/version grid.
       - name: Fail if any test is skipped
+        if: runner.os == 'Linux'
         working-directory: java
         run: |
           if grep -rn "@Disabled\|@Ignore\|assumeTrue\|assumingThat" src/test/; then

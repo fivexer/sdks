@@ -15,7 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from fivexer import AsyncFivexer, AsyncFivexerWorker, Fivexer, FivexerWorker
+from fivexer import (
+    AsyncFivexer,
+    AsyncFivexerSupervisor,
+    AsyncFivexerWorker,
+    Fivexer,
+    FivexerSupervisor,
+    FivexerWorker,
+)
 
 CATALOGUE = Path(__file__).resolve().parents[2] / "contract" / "operations.yaml"
 
@@ -46,15 +53,18 @@ def _snake(name: str) -> str:
 def _python_path(operation: str) -> str:
     """Wire name -> Python attribute path.
 
-    The conversion is mechanical: camelCase segments become snake_case, and the worker plane's
-    `worker.` prefix is dropped because it is a separate client rather than a resource group on
-    the workspace one. RENAMED holds only the handful that break that rule, so a new operation
+    The conversion is mechanical: camelCase segments become snake_case, and the session planes'
+    `worker.` / `supervisor.` prefixes are dropped, because each is a separate client rather
+    than a resource group on the workspace one. RENAMED holds only the handful that break that rule, so a new operation
     needs an entry there only when it genuinely diverges.
     """
     if operation in RENAMED:
         return RENAMED[operation]
-    stem = operation[len("worker.") :] if operation.startswith("worker.") else operation
-    return ".".join(_snake(part) for part in stem.split("."))
+    for prefix in ("worker.", "supervisor."):
+        if operation.startswith(prefix):
+            operation = operation[len(prefix) :]
+            break
+    return ".".join(_snake(part) for part in operation.split("."))
 
 
 def _operations() -> list[str]:
@@ -74,8 +84,13 @@ def _resolve(root: object, dotted: str) -> object:
 
 
 ALL_OPERATIONS = _operations()
-WORKSPACE_OPS = [op for op in ALL_OPERATIONS if not op.startswith("worker.")]
+# Three credential planes, three clients. An operation belongs to whichever plane's prefix it
+# carries; everything unprefixed is the workspace (`sk_`) plane.
 WORKER_OPS = [op for op in ALL_OPERATIONS if op.startswith("worker.")]
+SUPERVISOR_OPS = [op for op in ALL_OPERATIONS if op.startswith("supervisor.")]
+WORKSPACE_OPS = [
+    op for op in ALL_OPERATIONS if not op.startswith(("worker.", "supervisor."))
+]
 
 
 def test_the_catalogue_was_actually_read():
@@ -83,6 +98,7 @@ def test_the_catalogue_was_actually_read():
     assert len(ALL_OPERATIONS) >= 80
     assert "tasks.create" in ALL_OPERATIONS
     assert "worker.login" in WORKER_OPS
+    assert "supervisor.overview" in SUPERVISOR_OPS
 
 
 @pytest.mark.parametrize("operation", WORKSPACE_OPS)
@@ -107,3 +123,11 @@ def test_every_worker_portal_operation_exists_on_both_worker_clients(operation):
 
     assert callable(_resolve(FivexerWorker(base_url="https://api.fivexer.test"), path))
     assert callable(_resolve(AsyncFivexerWorker(base_url="https://api.fivexer.test"), path))
+
+
+@pytest.mark.parametrize("operation", SUPERVISOR_OPS)
+def test_every_supervisor_operation_exists_on_both_supervisor_clients(operation):
+    path = _python_path(operation)
+
+    assert callable(_resolve(FivexerSupervisor("https://api.fivexer.test"), path))
+    assert callable(_resolve(AsyncFivexerSupervisor("https://api.fivexer.test"), path))

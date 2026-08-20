@@ -24,6 +24,7 @@ from .client import AsyncFivexer, Fivexer
 from .errors import FivexerApiError, FivexerError, SignatureVerificationError
 from .models import (
     CLEAR,
+    AcceptSupervisorInvite,
     AcceptWorkerInvite,
     AcceptWorkerInviteResult,
     AddComment,
@@ -92,6 +93,16 @@ from .models import (
     SuggestedWorker,
     SuggestWorkers,
     SuggestWorkersResult,
+    SupervisorAssignResult,
+    SupervisorAvailabilityResult,
+    SupervisorCounts,
+    SupervisorCrewMember,
+    SupervisorEntry,
+    SupervisorIdentity,
+    SupervisorMe,
+    SupervisorOverview,
+    SupervisorParkedTask,
+    SupervisorSession,
     Task,
     TaskAction,
     TaskCheckIssue,
@@ -164,10 +175,11 @@ from .models import (
     WorkspaceBreakMetrics,
     WorkspaceStats,
 )
+from .supervisor import AsyncFivexerSupervisor, FivexerSupervisor
 from .webhook import SIGNATURE_HEADER, Webhook, WebhookEvent
 from .worker import AsyncFivexerWorker, FivexerWorker
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     # clients
@@ -338,5 +350,19 @@ __all__ = [
     "WorkerPortalLink",
     "WorkerSkillLevel",
     "WorkerSkillSet",
+    # supervisor plane
+    "AcceptSupervisorInvite",
+    "SupervisorAssignResult",
+    "SupervisorAvailabilityResult",
+    "SupervisorCounts",
+    "SupervisorCrewMember",
+    "SupervisorEntry",
+    "SupervisorIdentity",
+    "SupervisorMe",
+    "SupervisorOverview",
+    "SupervisorParkedTask",
+    "SupervisorSession",
+    "AsyncFivexerSupervisor",
+    "FivexerSupervisor",
     "__version__",
 ]

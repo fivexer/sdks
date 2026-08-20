@@ -32,6 +32,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`portal`, `slaStats`), because only `stats` was special-cased. Both now resolve any dotless
   name as a top-level client method.
 
+## [Unreleased] — supervisor plane
+
+### Added
+- **The supervisor plane, in all four SDKs.** A third credential type (`sv_` session) alongside
+  the workspace key and the worker token, for a crew lead who watches and unblocks work rather
+  than doing it: `entry`, `acceptInvite`, `logout`, `me`, `overview`, `unpark`, `setPriority`,
+  `assign`, `setAvailability`, and Web Push. New clients: `FivexerSupervisor` in TypeScript,
+  Java and PHP; `FivexerSupervisor` / `AsyncFivexerSupervisor` in Python.
+- `contract/operations.yaml` now declares the `supervisor` plane and its 12 operations, so all
+  four `ContractParityTest`s hold the new clients to it. The `planned:` section is empty.
+
+### Notes
+- `SupervisorSession.expiresAt` is **epoch-milliseconds**, not the ISO-8601 string the worker
+  plane sends. The two planes genuinely differ on the wire and the clients mirror that rather
+  than papering over it.
+- Subscribing to supervisor push answers `{ ok: true }`, not the `{ endpoint, createdAt }` the
+  worker plane returns — that table is keyed by endpoint and has nothing else to hand back.
+- There is no supervisor `refresh`. A session is redeemed from a single-use link and, once
+  expired, can only be replaced by a new link; the clients deliberately have no recovery path,
+  because inventing one would hide that.
+
+### Fixed
+- `GET /v1/supervisor-auth/entry` was mis-classified as an HTML page in the `excluded:` section.
+  It returns JSON (`{ consoleUrl }`) and is a real SDK operation.
+- CI ran the Windows matrix legs under PowerShell, which cannot parse `if grep …` — and, worse,
+  propagates only the **last** command's exit code in a multi-line `run:`, so a failing test
+  suite followed by a passing gate script reported success. All three workflows now pin
+  `shell: bash` on their test jobs. The skipped-test guard greps source, so it runs on one leg.
+- PHPUnit is invoked as `php vendor/phpunit/phpunit/phpunit` rather than through the
+  `vendor/bin` proxy, which on Windows is a shell script beside a `.bat`.
+
 ## [java-0.2.0]
 
 ### Added

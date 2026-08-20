@@ -183,6 +183,31 @@ link = client.join_links.create(CreateJoinLink(label="Warehouse hires", max_uses
 link.join_url          # returned only here — a lost link is re-created, never recovered
 ```
 
+## Supervisor plane
+
+A crew lead watches and unblocks work rather than doing it. A session is redeemed from a
+single-use link an owner generated in the console — there is no login and no refresh, so an
+expired session means "get a new link":
+
+```python
+from fivexer import AcceptSupervisorInvite, FivexerSupervisor
+
+sup = FivexerSupervisor("https://api.fivexer.com")
+sup.accept_invite(AcceptSupervisorInvite(token="<from the link>"))
+
+board = sup.overview()          # counts, crew (busiest first) and parked work, in ONE request
+board.counts.oldest_wait_ms
+board.crew[0].worker_id         # the busiest crew member
+
+sup.unpark(board.parked[0].id)  # back to the queue
+sup.assign("task_8fk2", "agent_1")
+sup.set_availability("agent_1", False, release_backlog=True)
+```
+
+`AsyncFivexerSupervisor` is the awaited mirror. Scope is enforced server-side: a task from
+another crew is a 403, not a silent move. `session_expires_at` is epoch-milliseconds here, not
+the ISO string the worker plane uses — the two planes genuinely differ on the wire.
+
 ## Error handling
 
 Non-2xx responses raise `FivexerApiError` with the API's `code` and, on `402`/`429`, the quota

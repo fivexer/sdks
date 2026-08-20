@@ -7,6 +7,7 @@ namespace Fivexer\SDK;
 use Fivexer\SDK\Exception\FivexerApiException;
 use Fivexer\SDK\Exception\FivexerException;
 use Fivexer\SDK\Internal\Json;
+use Fivexer\SDK\Internal\SessionTransport;
 use Fivexer\SDK\Model\AcceptWorkerInvite;
 use Fivexer\SDK\Model\AcceptWorkerInviteResult;
 use Fivexer\SDK\Model\ChangePin;
@@ -64,6 +65,8 @@ use GuzzleHttp\RequestOptions;
  */
 final class FivexerWorker
 {
+    use SessionTransport;
+
     private const DEFAULT_TIMEOUT_SECONDS = 30.0;
 
     private readonly string $baseUrl;
@@ -523,35 +526,4 @@ final class FivexerWorker
         return $headers;
     }
 
-    private static function isRetryable(int $status): bool
-    {
-        return $status === 429 || $status >= 500;
-    }
-
-    private static function retryAfterSeconds(string $value): ?float
-    {
-        if ($value === '' || !\is_numeric($value)) {
-            return null;
-        }
-        return \max(0.0, (float) $value);
-    }
-
-    private static function toApiException(int $status, string $rawBody): FivexerApiException
-    {
-        $code = 'unknown_error';
-        $message = 'http ' . $status;
-
-        $decoded = \json_decode($rawBody, true);
-        if (\is_array($decoded) && isset($decoded['error']) && \is_array($decoded['error'])) {
-            $error = $decoded['error'];
-            if (isset($error['code']) && \is_string($error['code'])) {
-                $code = $error['code'];
-            }
-            if (isset($error['message']) && \is_string($error['message'])) {
-                $message = $error['message'];
-            }
-        }
-
-        return new FivexerApiException($status, $code, $message);
-    }
 }

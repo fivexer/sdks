@@ -180,6 +180,27 @@ CreateJoinLinkResult link = client.joinLinks().create(new CreateJoinLink("Wareho
 link.getJoinUrl();        // returned only here — a lost link is re-created, never recovered
 ```
 
+## Supervisor plane
+
+A crew lead watches and unblocks work rather than doing it. A session is redeemed from a
+single-use link — there is no login and no refresh, so an expired session means "get a new link":
+
+```java
+FivexerSupervisor sup = new FivexerSupervisor("https://api.fivexer.com");
+sup.acceptInvite(new AcceptSupervisorInvite(linkToken));
+
+SupervisorOverview board = sup.overview();   // counts, crew and parked work in ONE request
+board.getCounts().getOldestWaitMs();
+board.getCrew().get(0).getWorkerId();        // the busiest crew member
+
+sup.unpark(board.getParked().get(0).getId());
+sup.assign("task_8fk2", "agent_1");
+sup.setAvailability("agent_1", false, true); // pause and redistribute pending work
+```
+
+Scope is enforced server-side: a task from another crew is a 403, not a silent move.
+`getSessionExpiresAt()` is epoch-milliseconds here, not the ISO string the worker plane uses.
+
 ## Error handling
 
 Non-2xx responses throw `FivexerApiException` with the API's `code` and, on `402`/`429`, the quota

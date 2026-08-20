@@ -1822,6 +1822,199 @@ class WorkerMetricsToday:
 
 # ─────────────────────────────── quota ───────────────────────────────
 
+# ─────────────────────────────── supervisor plane ───────────────────────────────
+#
+# A third credential type alongside the workspace key and the worker token. A supervisor
+# watches and unblocks work rather than doing it: they can unpark, reprioritise, hand a task
+# to a crew member and pause one, but never create work or manage the roster. Scope is either
+# one team or the whole workspace, and every action is checked against it server-side.
+
+
+@dataclass
+class AcceptSupervisorInvite:
+    token: str  # single-use, from the `?token=` of the supervisor link
+
+    def to_json(self) -> dict[str, Any]:
+        return {"token": self.token}
+
+
+@dataclass
+class SupervisorIdentity:
+    id: str
+    label: str = ""
+    email: str | None = None
+    team_id: str | None = None  # None for a workspace-wide supervisor
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorIdentity:
+        return cls(
+            id=data["id"],
+            label=data.get("label", ""),
+            email=data.get("email"),
+            team_id=data.get("teamId"),
+        )
+
+
+@dataclass
+class SupervisorSession:
+    """``expires_at`` is **epoch-milliseconds**, not the ISO-8601 string the worker plane
+    sends. The two planes genuinely differ on the wire; this mirrors the server rather than
+    papering over it."""
+
+    token: str  # an `sv_` supervisor session token
+    expires_at: int  # epoch-ms
+    supervisor: SupervisorIdentity
+    workspace_id: str
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorSession:
+        return cls(
+            token=data["token"],
+            expires_at=int(data.get("expiresAt", 0)),
+            supervisor=SupervisorIdentity.from_json(data.get("supervisor") or {"id": ""}),
+            workspace_id=data.get("workspaceId", ""),
+        )
+
+
+@dataclass
+class SupervisorEntry:
+    """Where a supervisor can sign in from. Unauthenticated, and deliberately takes no
+    workspace id — echoing one back would turn it into an existence oracle."""
+
+    console_url: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorEntry:
+        return cls(console_url=data.get("consoleUrl"))
+
+
+@dataclass
+class SupervisorMe:
+    supervisor_id: str
+    label: str = ""
+    email: str | None = None
+    workspace_id: str = ""
+    #: ``None`` is a real answer — it means the whole workspace, not a missing value.
+    team_key: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorMe:
+        return cls(
+            supervisor_id=data.get("supervisorId", ""),
+            label=data.get("label", ""),
+            email=data.get("email"),
+            workspace_id=data.get("workspaceId", ""),
+            team_key=data.get("teamKey"),
+        )
+
+
+@dataclass
+class SupervisorCounts:
+    queued: int = 0
+    pending: int = 0
+    parked: int = 0
+    oldest_wait_ms: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorCounts:
+        return cls(
+            queued=int(data.get("queued", 0)),
+            pending=int(data.get("pending", 0)),
+            parked=int(data.get("parked", 0)),
+            oldest_wait_ms=int(data.get("oldestWaitMs", 0)),
+        )
+
+
+@dataclass
+class SupervisorCrewMember:
+    worker_id: str
+    backlog: int = 0
+    available: bool = False
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorCrewMember:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            backlog=int(data.get("backlog", 0)),
+            available=bool(data.get("available", False)),
+        )
+
+
+@dataclass
+class SupervisorParkedTask:
+    """A parked task as the board shows it — enough to decide on, not the whole task."""
+
+    id: str
+    tags: list[str] = field(default_factory=list)
+    priority: float | None = None
+    created_at: int | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorParkedTask:
+        return cls(
+            id=data["id"],
+            tags=list(data.get("tags") or []),
+            priority=_float_or_none(data.get("priority")),
+            created_at=_int_or_none(data.get("createdAt")),
+        )
+
+
+@dataclass
+class SupervisorOverview:
+    """The whole board in one response: counts, crew and what needs attention.
+
+    Deliberately one endpoint rather than four — this is a phone on a depot floor, and four
+    round trips over a bad connection show a board that assembles itself in pieces. ``parked``
+    is capped at 50 server-side for the same reason.
+    """
+
+    team_key: str | None = None
+    counts: SupervisorCounts = field(default_factory=SupervisorCounts)
+    #: Busiest first.
+    crew: list[SupervisorCrewMember] = field(default_factory=list)
+    parked: list[SupervisorParkedTask] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorOverview:
+        return cls(
+            team_key=data.get("teamKey"),
+            counts=SupervisorCounts.from_json(data.get("counts") or {}),
+            crew=_each(data, "crew", SupervisorCrewMember.from_json),
+            parked=_each(data, "parked", SupervisorParkedTask.from_json),
+        )
+
+
+@dataclass
+class SupervisorAssignResult:
+    id: str
+    worker_id: str = ""
+    status: str = "pending"
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorAssignResult:
+        return cls(
+            id=data.get("id", ""),
+            worker_id=data.get("workerId", ""),
+            status=data.get("status", "pending"),
+        )
+
+
+@dataclass
+class SupervisorAvailabilityResult:
+    worker_id: str
+    available: bool = False
+    #: Non-empty only when ``release_backlog`` was set; accepted work never moves.
+    released_task_ids: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SupervisorAvailabilityResult:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            available=bool(data.get("available", False)),
+            released_task_ids=list(data.get("releasedTaskIds") or []),
+        )
+
+
 # ─────────────────────────────── worker portal: self-service ───────────────────────────────
 
 

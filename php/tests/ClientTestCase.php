@@ -59,7 +59,8 @@ abstract class ClientTestCase extends TestCase
         return new FivexerWorker('https://api.fivexer.test', null, null, $this->guzzle(), $maxRetries);
     }
 
-    private function guzzle(): Client
+    /** The mock-backed Guzzle client, shared by every plane's test double. */
+    protected function guzzle(): Client
     {
         $stack = HandlerStack::create($this->mock);
         $stack->push(Middleware::history($this->history));

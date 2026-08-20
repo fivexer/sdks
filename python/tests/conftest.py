@@ -13,7 +13,14 @@ from typing import Any, Callable
 import httpx
 import pytest
 
-from fivexer import AsyncFivexer, AsyncFivexerWorker, Fivexer, FivexerWorker
+from fivexer import (
+    AsyncFivexer,
+    AsyncFivexerSupervisor,
+    AsyncFivexerWorker,
+    Fivexer,
+    FivexerSupervisor,
+    FivexerWorker,
+)
 
 BASE_URL = "https://api.fivexer.test"
 
@@ -104,6 +111,36 @@ def async_worker(server: MockServer) -> AsyncFivexerWorker:
         base_url=BASE_URL,
         token="wt_s3ss10n",
         worker_id="agent_1",
+        max_retries=0,
+        http_client=httpx.AsyncClient(transport=transport),
+    )
+
+
+@pytest.fixture
+def supervisor(server: MockServer) -> FivexerSupervisor:
+    """A supervisor client already holding a session, as if accept_invite() had run."""
+    transport = httpx.MockTransport(server.handler)
+    return FivexerSupervisor(
+        BASE_URL,
+        token="sv_s3ss10n",
+        max_retries=0,
+        http_client=httpx.Client(transport=transport),
+    )
+
+
+@pytest.fixture
+def anon_supervisor(server: MockServer) -> FivexerSupervisor:
+    """A supervisor client with no session yet — the pre-redemption state."""
+    transport = httpx.MockTransport(server.handler)
+    return FivexerSupervisor(BASE_URL, max_retries=0, http_client=httpx.Client(transport=transport))
+
+
+@pytest.fixture
+def async_supervisor(server: MockServer) -> AsyncFivexerSupervisor:
+    transport = httpx.MockTransport(server.handler)
+    return AsyncFivexerSupervisor(
+        BASE_URL,
+        token="sv_s3ss10n",
         max_retries=0,
         http_client=httpx.AsyncClient(transport=transport),
     )

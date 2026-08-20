@@ -18,6 +18,7 @@ from typing import Any, cast
 from urllib.parse import quote
 
 from .models import (
+    AcceptSupervisorInvite,
     AcceptWorkerInvite,
     AddComment,
     ChangePin,
@@ -683,3 +684,67 @@ def worker_push_unsubscribe(endpoint: str) -> RequestSpec:
     # The keys are not sent on unsubscribe: by the time a browser fires
     # `pushsubscriptionchange` it has already discarded them.
     return RequestSpec("DELETE", "/portal/push/subscriptions", body={"endpoint": endpoint})
+
+
+# ─────────────────────────────── supervisor plane ───────────────────────────────
+
+
+def supervisor_entry() -> RequestSpec:
+    return RequestSpec("GET", "/supervisor-auth/entry")
+
+
+def supervisor_accept(invite: AcceptSupervisorInvite) -> RequestSpec:
+    return RequestSpec(
+        "POST", "/supervisor-auth/accept", body=body_of(invite, AcceptSupervisorInvite)
+    )
+
+
+def supervisor_logout() -> RequestSpec:
+    return RequestSpec("POST", "/supervisor-auth/logout")
+
+
+def supervisor_me() -> RequestSpec:
+    return RequestSpec("GET", "/supervisor/me")
+
+
+def supervisor_overview() -> RequestSpec:
+    return RequestSpec("GET", "/supervisor/overview")
+
+
+def supervisor_unpark(task_id: str, options: UnparkTask | None = None) -> RequestSpec:
+    body = {} if options is None else body_of(options, UnparkTask)
+    return RequestSpec("POST", f"/supervisor/tasks/{enc(task_id)}/unpark", body=body)
+
+
+def supervisor_set_priority(task_id: str, priority: float) -> RequestSpec:
+    return RequestSpec(
+        "POST", f"/supervisor/tasks/{enc(task_id)}/priority", body={"priority": priority}
+    )
+
+
+def supervisor_assign(task_id: str, worker_id: str, force: bool | None = None) -> RequestSpec:
+    body = compact({"force": force})
+    body["workerId"] = worker_id
+    return RequestSpec("POST", f"/supervisor/tasks/{enc(task_id)}/assign", body=body)
+
+
+def supervisor_set_availability(
+    worker_id: str, available: bool, release_backlog: bool | None = None
+) -> RequestSpec:
+    body = compact({"releaseBacklog": release_backlog})
+    body["available"] = available
+    return RequestSpec("POST", f"/supervisor/workers/{enc(worker_id)}/availability", body=body)
+
+
+def supervisor_push_config() -> RequestSpec:
+    return RequestSpec("GET", "/supervisor/push/config")
+
+
+def supervisor_push_subscribe(subscription: PushSubscriptionInput) -> RequestSpec:
+    return RequestSpec(
+        "POST", "/supervisor/push/subscriptions", body=body_of(subscription, PushSubscriptionInput)
+    )
+
+
+def supervisor_push_unsubscribe(endpoint: str) -> RequestSpec:
+    return RequestSpec("DELETE", "/supervisor/push/subscriptions", body={"endpoint": endpoint})

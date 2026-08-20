@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fivexer\SDK\Tests;
 
 use Fivexer\SDK\Fivexer;
+use Fivexer\SDK\FivexerSupervisor;
 use Fivexer\SDK\FivexerWorker;
 use Fivexer\SDK\Resource\Breaks;
 use Fivexer\SDK\Resource\Decisions;
@@ -59,6 +60,7 @@ final class ContractParityTest extends TestCase
         'joinLinks' => JoinLinks::class,
         'identities' => Identities::class,
         'worker' => FivexerWorker::class,
+        'supervisor' => FivexerSupervisor::class,
     ];
 
     /**
