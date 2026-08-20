@@ -1,9 +1,15 @@
 # Fivexer /v1 contract cases
 #
-# The declarative source of truth for the /v1 surface. Both SDKs are hand-written;
-# these cases document the exact request each SDK must build and the exact response it
-# must parse. The shared contract-test suite (run against a real /v1 server) validates
-# that every SDK matches this.
+# Every SDK is hand-written, so drift is caught by tests rather than prevented by a generator.
+# These cases document the exact request each SDK must build and the exact response it must
+# parse, for a shared suite that runs them against a real /v1 server.
+#
+# STATUS: that runner does not exist yet. Nothing reads this file today — all four
+# ContractParityTests walk `operations.yaml` instead, which is the checklist that is actually
+# enforced. So `scripts/sync-contract.py` reports missing cases as a NOTE and does not fail the
+# build: gating a merge on completeness nobody consumes is the same failure the contract-sync
+# workflow was fixed for, a check asserting more than it verifies. Make it blocking the day the
+# runner lands, and delete this paragraph.
 #
 # Reference implementation: platform/packages/sdk (TypeScript @fivexer/sdk).
 # Auth: Authorization: Bearer sk_test_/sk_live_

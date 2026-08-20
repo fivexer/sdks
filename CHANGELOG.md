@@ -27,7 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reporting a pass it did not earn.
 - The `cases.yaml` completeness check no longer blocks a merge. Nothing reads that file: all four
   SDK parity tests walk `operations.yaml`, and the real-server contract runner it was written for
-  (PLAN.md §4) was never built. It is reported as a note until that runner lands.
+  was never built. It is reported as a note until that runner lands — see `contract/cases.yaml`.
 - Java and PHP parity tests threw out of `substring`/`strrpos` on a dotless operation name
   (`portal`, `slaStats`), because only `stats` was special-cased. Both now resolve any dotless
   name as a top-level client method.

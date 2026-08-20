@@ -28,7 +28,7 @@ use Fivexer\SDK\Fivexer;
 use Fivexer\SDK\Model\CreateTask;
 use Fivexer\SDK\Model\UpsertWorker;
 
-$client = new Fivexer('https://api.fivexer.com', 'sk_test_...');
+$client = new Fivexer('https://api.5xer.com', 'sk_test_...');
 
 // Register a worker
 $client->workers()->upsert((new UpsertWorker())->id('agent_1')->tags(['english', 'billing']));
@@ -116,7 +116,7 @@ the worker id, so later calls need no extra wiring:
 use Fivexer\SDK\FivexerWorker;
 use Fivexer\SDK\Model\WorkerLogin;
 
-$worker = new FivexerWorker('https://api.fivexer.com');
+$worker = new FivexerWorker('https://api.5xer.com');
 $worker->login(new WorkerLogin('ws_1', 'agent_1', '4821'));
 
 $queue = $worker->queue();
@@ -202,7 +202,7 @@ single-use link — there is no login and no refresh, so an expired session mean
 use Fivexer\SDK\FivexerSupervisor;
 use Fivexer\SDK\Model\AcceptSupervisorInvite;
 
-$sup = new FivexerSupervisor('https://api.fivexer.com');
+$sup = new FivexerSupervisor('https://api.5xer.com');
 $sup->acceptInvite(new AcceptSupervisorInvite($linkToken));
 
 $board = $sup->overview();        // counts, crew and parked work in ONE request

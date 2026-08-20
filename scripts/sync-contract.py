@@ -147,15 +147,15 @@ def report_gaps(spec: dict) -> int:
             print(f"   {method:6} {path}")
 
     # cases.yaml is graded but does not block. Nothing reads it yet: all four SDK parity tests
-    # walk operations.yaml, and the real-server contract runner it was written for (PLAN.md §4)
-    # has never been built. Gating a merge on completeness nobody consumes is the same failure
-    # this workflow was fixed for — a check that asserts more than it verifies. Make it blocking
-    # the day that runner lands.
+    # walk operations.yaml, and the real-server contract runner it was written for has never
+    # been built. Gating a merge on completeness nobody consumes is the same failure this
+    # workflow was fixed for — a check that asserts more than it verifies. The full rationale,
+    # and the condition for making it blocking, is in cases.yaml's own header.
     referenced = cased_paths()
     missing_cases = sorted(p for p in spec["paths"] if p.startswith("/v1") and not path_has_case(p, referenced))
     if missing_cases:
         print(f"\nnote: cases.yaml documents {len(missing_cases)} fewer /v1 path(s) than the spec.")
-        print("      Not blocking — no test reads cases.yaml yet (see PLAN.md §4).")
+        print("      Not blocking — no test reads cases.yaml yet; see its header for why.")
     else:
         print("every /v1 path has a contract case ✓")
 

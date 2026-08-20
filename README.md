@@ -1,7 +1,23 @@
 # Fivexer SDKs
 
-Hand-written, MIT-licensed HTTP-client SDKs for the **Fivexer Platform** `/v1` routing API.
-Create workers and tasks; the platform matches them continuously and notifies you via webhooks.
+Official client libraries for **Fivexer** — task routing that learns who's best, and never
+breaks your rules.
+
+Fivexer routes each ticket, case, or field job to whoever is actually best for it, by skill and
+current load: queues clear faster, nobody drowns while others sit idle, and every decision is
+traceable to a name and a reason. These SDKs are how your application talks to it — describe the
+work, describe who can do it, and the platform assigns continuously while webhooks tell you what
+happened.
+
+You set the rules; the engine does the assigning. Certifications and capacity are checked
+before anything is assigned — no exceptions — and the learning only ever ranks candidates who
+already passed. Someone who must not take a job never gets it, whatever the model prefers, and
+the decision trail says who was considered and why.
+
+**[Product](https://5xer.com)** · **[Docs](https://5xer.com/docs)** ·
+**[How matching works](https://5xer.com/docs/concepts/how-matching-works)** ·
+**[API reference](https://5xer.com/docs/api)** ·
+**[Migrating from TaskRouter](https://5xer.com/docs/migrate/from-twilio-taskrouter)**
 
 > **Status:** 0.x beta. The `/v1` API is pre-stable; breaking changes are possible under `0.x`
 > until `1.0` is cut alongside an API stability guarantee.
@@ -41,7 +57,7 @@ normalised.
 ```python
 from fivexer import Fivexer, CreateTask, UpsertWorker
 
-client = Fivexer(base_url="https://api.fivexer.com", api_key="sk_test_...")
+client = Fivexer(base_url="https://api.5xer.com", api_key="sk_test_...")
 
 client.workers.upsert(UpsertWorker(id="agent_1", tags=["english", "billing"]))
 task = client.tasks.create(CreateTask(tags=["english", "billing"], priority=90))
@@ -57,7 +73,7 @@ Async is identical — use `AsyncFivexer` and `await` each call.
 ## Quickstart (Java)
 
 ```java
-Fivexer client = new Fivexer("https://api.fivexer.com", "sk_test_...");
+Fivexer client = new Fivexer("https://api.5xer.com", "sk_test_...");
 client.workers().upsert(new UpsertWorker("agent_1").tags(List.of("english", "billing")));
 Task task = client.tasks().create(new CreateTask(List.of("english", "billing")).priority(90));
 ```
@@ -65,7 +81,7 @@ Task task = client.tasks().create(new CreateTask(List.of("english", "billing")).
 ## Quickstart (PHP)
 
 ```php
-$client = new Fivexer('https://api.fivexer.com', 'sk_test_...');
+$client = new Fivexer('https://api.5xer.com', 'sk_test_...');
 $client->workers()->upsert((new UpsertWorker())->id('agent_1')->tags(['english', 'billing']));
 $task = $client->tasks()->create((new CreateTask(['english', 'billing']))->priority(90));
 ```
@@ -73,7 +89,7 @@ $task = $client->tasks()->create((new CreateTask(['english', 'billing']))->prior
 ## Quickstart (TypeScript)
 
 ```ts
-const client = new Fivexer({ baseUrl: 'https://api.fivexer.com', apiKey: 'sk_test_...' });
+const client = new Fivexer({ baseUrl: 'https://api.5xer.com', apiKey: 'sk_test_...' });
 await client.workers.upsert({ id: 'agent_1', tags: ['english', 'billing'] });
 const task = await client.tasks.create({ tags: ['english', 'billing'], priority: 90 });
 ```
@@ -86,7 +102,7 @@ adopts the returned token and the worker id, so later calls need no extra wiring
 ```python
 from fivexer import FivexerWorker, WorkerLogin
 
-worker = FivexerWorker(base_url="https://api.fivexer.com")
+worker = FivexerWorker(base_url="https://api.5xer.com")
 worker.login(WorkerLogin(workspace_id="ws_1", worker_id="agent_1", pin="4821"))
 
 queue = worker.queue()
@@ -185,8 +201,10 @@ java/       Maven artifact `io.fivexer:fivexer-sdk`
 php/        Packagist package `fivexer/sdk`
 ```
 
-Each SDK is hand-written (not generated) and kept in sync with the `/v1` contract via the shared
-[`contract/`](contract) suite. See [`PLAN.md`](PLAN.md) for the full design.
+Each SDK is hand-written rather than generated, and held to the `/v1` contract by
+[`contract/operations.yaml`](contract/operations.yaml) — the shared checklist every SDK's
+`ContractParityTest` walks. `scripts/sync-contract.py` refreshes the spec snapshot and reports
+anything a language has not yet covered.
 
 ## Development
 

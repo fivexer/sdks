@@ -21,7 +21,7 @@ pip install fivexer
 ```python
 from fivexer import Fivexer, CreateTask, UpsertWorker
 
-client = Fivexer(base_url="https://api.fivexer.com", api_key="sk_test_...")
+client = Fivexer(base_url="https://api.5xer.com", api_key="sk_test_...")
 
 # Register a worker
 client.workers.upsert(UpsertWorker(id="agent_1", tags=["english", "billing"]))
@@ -112,7 +112,7 @@ the worker id, so later calls need no extra wiring:
 ```python
 from fivexer import FivexerWorker, WorkerLogin
 
-worker = FivexerWorker(base_url="https://api.fivexer.com")
+worker = FivexerWorker(base_url="https://api.5xer.com")
 worker.login(WorkerLogin(workspace_id="ws_1", worker_id="agent_1", pin="4821"))
 
 queue = worker.queue()
@@ -132,7 +132,7 @@ invite. Both mint a session, and the client adopts it, so the next call is alrea
 ```python
 from fivexer import AcceptWorkerInvite, JoinWorkspace
 
-worker = FivexerWorker(base_url="https://api.fivexer.com")
+worker = FivexerWorker(base_url="https://api.5xer.com")
 
 # QR self-registration: the worker id is generated server-side — show it to them, it is the
 # username they type at the PIN screen next time.
@@ -192,7 +192,7 @@ expired session means "get a new link":
 ```python
 from fivexer import AcceptSupervisorInvite, FivexerSupervisor
 
-sup = FivexerSupervisor("https://api.fivexer.com")
+sup = FivexerSupervisor("https://api.5xer.com")
 sup.accept_invite(AcceptSupervisorInvite(token="<from the link>"))
 
 board = sup.overview()          # counts, crew (busiest first) and parked work, in ONE request

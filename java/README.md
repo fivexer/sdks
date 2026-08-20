@@ -37,7 +37,7 @@ implementation 'io.fivexer:fivexer-sdk:0.1.0'
 import io.fivexer.sdk.Fivexer;
 import io.fivexer.sdk.model.*;
 
-Fivexer client = new Fivexer("https://api.fivexer.com", "sk_test_...");
+Fivexer client = new Fivexer("https://api.5xer.com", "sk_test_...");
 
 // Register a worker
 client.workers().upsert(new UpsertWorker("agent_1").tags(List.of("english", "billing")));
@@ -115,7 +115,7 @@ A worker works their own queue with a `wt_` session token. `login()` adopts both
 the worker id, so later calls need no extra wiring:
 
 ```java
-FivexerWorker worker = new FivexerWorker("https://api.fivexer.com");
+FivexerWorker worker = new FivexerWorker("https://api.5xer.com");
 worker.login(new WorkerLogin("ws_1", "agent_1", "4821"));
 
 WorkerQueue queue = worker.queue();
@@ -186,7 +186,7 @@ A crew lead watches and unblocks work rather than doing it. A session is redeeme
 single-use link — there is no login and no refresh, so an expired session means "get a new link":
 
 ```java
-FivexerSupervisor sup = new FivexerSupervisor("https://api.fivexer.com");
+FivexerSupervisor sup = new FivexerSupervisor("https://api.5xer.com");
 sup.acceptInvite(new AcceptSupervisorInvite(linkToken));
 
 SupervisorOverview board = sup.overview();   // counts, crew and parked work in ONE request

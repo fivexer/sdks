@@ -21,7 +21,7 @@ examples/
 ```bash
 cd sdks/python
 pip install -e .                  # or `pip install fivexer`
-FIVEXER_BASE_URL=https://api.fivexer.com FIVEXER_API_KEY=sk_test_... \
+FIVEXER_BASE_URL=https://api.5xer.com FIVEXER_API_KEY=sk_test_... \
   python ../examples/python/quickstart.py
 ```
 
@@ -40,7 +40,7 @@ java -cp /tmp/java-ex:... Quickstart
 ```bash
 cd platform/packages/sdk
 npm install
-FIVEXER_BASE_URL=https://api.fivexer.com FIVEXER_API_KEY=sk_test_... \
+FIVEXER_BASE_URL=https://api.5xer.com FIVEXER_API_KEY=sk_test_... \
   npx tsx ../../../sdks/examples/typescript/quickstart.ts
 ```
 
@@ -49,7 +49,7 @@ FIVEXER_BASE_URL=https://api.fivexer.com FIVEXER_API_KEY=sk_test_... \
 ```bash
 cd sdks/php
 composer install
-FIVEXER_BASE_URL=https://api.fivexer.com FIVEXER_API_KEY=sk_test_... \
+FIVEXER_BASE_URL=https://api.5xer.com FIVEXER_API_KEY=sk_test_... \
   php ../examples/php/quickstart.php
 ```
 
