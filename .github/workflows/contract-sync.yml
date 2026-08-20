@@ -28,15 +28,15 @@ jobs:
     spec-well-formed:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - name: Validate OpenAPI spec is well-formed
               run: npx -y @redocly/cli@latest lint contract/openapi.json
 
     catalogue-complete:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-python@v5
+            - uses: actions/checkout@v7
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.12"
             # Every /v1 operation in the snapshot must have an operations.yaml entry (the SDK
@@ -47,8 +47,8 @@ jobs:
     drift:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-python@v5
+            - uses: actions/checkout@v7
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.12"
             # Absent a token this checkout step is skipped and --check degrades to a notice,
@@ -57,7 +57,7 @@ jobs:
               if: env.PLATFORM_REPO_TOKEN != ''
               env:
                   PLATFORM_REPO_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN }}
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
               with:
                   repository: fivexer/platform
                   token: ${{ secrets.PLATFORM_REPO_TOKEN }}

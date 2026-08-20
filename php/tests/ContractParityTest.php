@@ -87,7 +87,11 @@ final class ContractParityTest extends TestCase
         // non-HTTP surface (webhook verification, the quota snapshot), which has no method.
         $groups = \explode("\nhelpers:", \explode("\ngroups:", $text, 2)[1], 2)[0];
 
-        \preg_match_all('/^\s+- name: ([a-zA-Z][\w.]*)$/m', $groups, $matches);
+        // `\r?$`, not `$`: PCRE's multiline `$` matches immediately before a \n, so on a CRLF
+        // checkout the \r sits between the name and the anchor and NOTHING matches — the
+        // catalogue parses as zero operations and every assertion below passes vacuously.
+        // `.gitattributes` normalises to LF, and this makes the parser survive it either way.
+        \preg_match_all('/^\s+- name: ([a-zA-Z][\w.]*)\r?$/m', $groups, $matches);
         /** @var list<string> */
         return $matches[1];
     }

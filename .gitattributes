@@ -1,0 +1,25 @@
+# Line endings are a contract, not a preference.
+#
+# `contract/operations.yaml` is parsed by every SDK's ContractParityTest with a line-anchored
+# regex. PCRE and Python both take `$` in multiline mode to mean "before \n" — with CRLF the
+# character before \n is \r, so the anchor never matches and the catalogue parses as ZERO
+# operations. The PHP suite caught exactly that on the Windows runners; the "expected the full
+# catalogue" guard is what turned a silently-vacuous pass into a visible failure.
+#
+# Normalising to LF in the working tree on every platform removes the whole class of problem,
+# rather than teaching each parser to tolerate a checkout setting.
+* text=auto eol=lf
+
+# Windows batch files are the exception that genuinely needs CRLF: cmd.exe mis-parses a
+# LF-only .bat, and gradlew.bat is on the Java CI path.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch these — normalisation would corrupt them.
+*.jar binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

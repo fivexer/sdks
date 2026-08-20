@@ -73,7 +73,11 @@ def _operations() -> list[str]:
     # non-HTTP surface (webhook verification, the quota snapshot), which has no client method.
     groups = text.split("\ngroups:", 1)[1].split("\nhelpers:", 1)[0]
     # Operation entries look like `- name: tasks.create`; the group headers use `- group:`.
-    return re.findall(r"^\s+- name: ([a-zA-Z][\w.]*)$", groups, re.M)
+    # `\r?$`, not `$`: Python's multiline `$` matches immediately before a \n, so on a CRLF
+    # checkout the \r sits between the name and the anchor and nothing matches — the catalogue
+    # parses as zero operations and every assertion below passes vacuously. `.gitattributes`
+    # normalises to LF; this makes the parser survive a checkout that did not.
+    return re.findall(r"^\s+- name: ([a-zA-Z][\w.]*)\r?$", groups, re.M)
 
 
 def _resolve(root: object, dotted: str) -> object:
