@@ -65,6 +65,10 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests import their fixtures as `from tests.conftest import ...`, which needs the project root
+# on sys.path. `python -m pytest` puts the CWD there implicitly and a bare `pytest` does not, so
+# without this the suite passes locally and fails to collect in CI — which is exactly what it did.
+pythonpath = ["."]
 # The coverage gate runs on a bare `pytest`, not only in CI, so a local run cannot pass while
 # the project is below threshold. --cov-branch is what makes the 90% floor mean line AND branch.
 addopts = "-q --cov=fivexer --cov-branch --cov-report=term-missing --cov-fail-under=90"

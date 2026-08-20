@@ -53,6 +53,7 @@
             "required": false
           }
         ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -4828,6 +4829,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -4840,6 +4842,11 @@
         "summary": "Rotate the current worker session token",
         "tags": [
           "worker-auth"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
         ],
         "responses": {
           "200": {
@@ -4854,6 +4861,7 @@
         "tags": [
           "worker-auth"
         ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -4894,6 +4902,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -4907,6 +4916,7 @@
         "tags": [
           "worker-auth"
         ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -4956,6 +4966,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -4968,6 +4979,11 @@
         "summary": "Revoke the current worker session and clear push registrations",
         "tags": [
           "worker-auth"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
         ],
         "responses": {
           "200": {
@@ -5843,6 +5859,7 @@
         "tags": [
           "supervisor"
         ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -5877,6 +5894,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -5889,6 +5907,11 @@
         "summary": "End this supervisor session",
         "tags": [
           "supervisor"
+        ],
+        "security": [
+          {
+            "supervisorToken": []
+          }
         ],
         "responses": {
           "200": {
@@ -6258,94 +6281,6 @@
         "security": [
           {
             "supervisorToken": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
-    },
-    "/studio-preview/{sessionId}": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "sessionId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "sessionId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
-    },
-    "/studio-preview/{sessionId}/{*}": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "sessionId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "*",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "sessionId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "*",
-            "required": true
           }
         ],
         "responses": {
@@ -7218,6 +7153,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7259,6 +7195,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7294,6 +7231,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7349,6 +7287,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7384,6 +7323,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7430,6 +7370,7 @@
             }
           }
         },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7443,6 +7384,7 @@
         "tags": [
           "auth"
         ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7454,6 +7396,7 @@
         "tags": [
           "auth"
         ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -7466,6 +7409,11 @@
         "summary": "Revoke the current session",
         "tags": [
           "auth"
+        ],
+        "security": [
+          {
+            "session": []
+          }
         ],
         "responses": {
           "200": {
@@ -10215,5 +10163,11 @@
         }
       }
     }
-  }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Relative to wherever this spec was served from"
+    }
+  ]
 }
