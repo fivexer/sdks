@@ -1,0 +1,887 @@
+# Fivexer SDK operation catalogue
+#
+# The parity checklist. Every operation the reference TypeScript SDK
+# (platform/packages/sdk) exposes, with the exact wire shape each hand-written SDK must
+# build. Walking this file and resolving each `name` to a method in every SDK is the
+# "no gaps" proof — see the parity check in the repo README.
+#
+# Reference: platform/packages/sdk/src/client.ts (plane: workspace)
+#            platform/packages/sdk/src/worker-client.ts (plane: worker)
+#
+# planes:
+#   workspace — Authorization: Bearer sk_test_/sk_live_ (workspace API key).
+#               Parses X-Quota-* onto client.quota; POST auto-sends an Idempotency-Key.
+#   worker    — Authorization: Bearer wt_… (worker session token, one worker's scope).
+#               No quota headers, no idempotency key.
+#
+# Field naming: `body`/`response` use the wire (camelCase) names. Language bindings
+# idiomatise them (snake_case in Python, getters in Java/PHP) but the wire is fixed.
+#
+# `?` suffix on a body field = optional.
+
+base_path: /v1
+
+planes:
+    workspace:
+        auth: { header: Authorization, scheme: Bearer, credential: "sk_test_/sk_live_" }
+        parses_quota_headers: true
+        auto_idempotency_key: POST
+        client: { ts: Fivexer, python: "Fivexer / AsyncFivexer", java: Fivexer, php: Fivexer }
+    worker:
+        auth: { header: Authorization, scheme: Bearer, credential: "wt_" }
+        parses_quota_headers: false
+        auto_idempotency_key: none
+        client:
+            { ts: FivexerWorker, python: "FivexerWorker / AsyncFivexerWorker", java: FivexerWorker, php: FivexerWorker }
+
+groups:
+    # ─────────────────────────── tasks ───────────────────────────
+    - group: tasks
+      plane: workspace
+      operations:
+          - name: tasks.create
+            method: POST
+            path: /tasks
+            body: CreateTaskInput
+            response: "{ id, status: queued }"
+            notes: 202. Auto Idempotency-Key so a transport retry is deduplicated server-side.
+          - name: tasks.get
+            method: GET
+            path: /tasks/{id}
+            response: Task
+          - name: tasks.list
+            method: GET
+            path: /tasks
+            query: "status?, cursor?, limit?"
+            response: TaskPage
+          - name: tasks.cancel
+            method: DELETE
+            path: /tasks/{id}
+            response: void
+          - name: tasks.accept
+            method: POST
+            path: /tasks/{id}/accept
+            body: "{ workerId }"
+            response: "{ id, status: accepted }"
+          - name: tasks.reject
+            method: POST
+            path: /tasks/{id}/reject
+            body: "{ workerId }"
+            response: "{ id, status: queued }"
+          - name: tasks.complete
+            method: POST
+            path: /tasks/{id}/complete
+            body: "{ workerId, result? }"
+            response: "{ id, status: completed }"
+          - name: tasks.assign
+            method: POST
+            path: /tasks/{id}/assign
+            body: "{ workerId, force? }"
+            response: AssignTaskResult
+            notes: >-
+                Operator override. `force` bypasses paused/backlog/veto/prior-rejection checks
+                (but never worker existence). `previousWorkerId` is null when the task came from
+                the queue rather than another worker.
+          - name: tasks.setPriority
+            method: PATCH
+            path: /tasks/{id}
+            body: "{ priority }"
+            response: "{ id, priority }"
+          - name: tasks.suggestWorkers
+            method: POST
+            path: /tasks/suggest-workers
+            body: SuggestWorkersInput
+            response: SuggestWorkersResult
+            notes: Dry-run scoring — returns who *would* match, without creating a task.
+          - name: tasks.createMany
+            method: POST
+            path: /tasks/bulk
+            body: "{ tasks: CreateTaskInput[] }"
+            response: BulkTaskReport
+            notes: >-
+                Partial success is normal — a 200 does not mean every task was created. Read
+                `failed` and the per-entry `results`, whose `index` maps back to the input list.
+          - name: tasks.check
+            method: POST
+            path: /tasks/check
+            body: CreateTaskInput
+            response: TaskCheckReport
+            notes: Dry run. Creates and reserves nothing, so it is safe on every keystroke of a form.
+          - name: tasks.ack
+            method: POST
+            path: /tasks/{id}/ack
+            body: "{ workerId }"
+            response: "{ id, status: accepted }"
+            notes: Acknowledge an offer without starting work — stops the response clock only.
+          - name: tasks.escalate
+            method: POST
+            path: /tasks/{id}/escalate
+            body: "{ workerId? }"
+            response: "{ id, escalated, parked, escalationLevel }"
+            notes: >-
+                `escalated: false, parked: true` is the end of the ladder — the task has left
+                matching, and this flag is the only thing that says so.
+          - name: tasks.parked
+            method: GET
+            path: /tasks/parked
+            response: "{ tasks: Task[], count }"
+            notes: Out of matching (exhausted ladder, SLA park, rejection budget) but recoverable via unpark.
+          - name: tasks.scheduled
+            method: GET
+            path: /tasks/scheduled
+            response: "{ tasks: Task[], count }"
+            notes: Held by a `schedule.notBefore` — the only view of work booked but not started.
+          - name: tasks.unpark
+            method: POST
+            path: /tasks/{id}/unpark
+            body: "{ resetEscalation?, resetSla?, resetSchedule? }"
+            response: "{ id, status: queued }"
+            notes: Reset the clocks that parked it, or the next sweep parks it straight back.
+
+    - group: tasks.context
+      plane: workspace
+      operations:
+          - name: tasks.context.get
+            method: GET
+            path: /tasks/{id}/context
+            response: TaskContext
+          - name: tasks.context.set
+            method: PUT
+            path: /tasks/{id}/context
+            body: SetTaskContextInput
+            response: TaskContext
+          - name: tasks.context.clear
+            method: DELETE
+            path: /tasks/{id}/context
+            response: void
+
+    - group: tasks.comments
+      plane: workspace
+      operations:
+          - name: tasks.comments.add
+            method: POST
+            path: /tasks/{id}/comments
+            body: AddCommentInput
+            response: "{ comment: Comment }"
+          - name: tasks.comments.list
+            method: GET
+            path: /tasks/{id}/comments
+            query: "cursor?, limit?"
+            response: CommentPage
+          - name: tasks.comments.remove
+            method: DELETE
+            path: /tasks/{id}/comments/{commentId}
+            response: void
+
+    - group: tasks.attachments
+      plane: workspace
+      operations:
+          - name: tasks.attachments.create
+            method: POST
+            path: /tasks/{id}/attachments
+            body: CreateAttachmentInput
+            response: "{ attachment: Attachment, upload: AttachmentUpload }"
+          - name: tasks.attachments.confirm
+            method: POST
+            path: /tasks/{id}/attachments/{attachmentId}/confirm
+            response: "{ attachment: Attachment }"
+          - name: tasks.attachments.list
+            method: GET
+            path: /tasks/{id}/attachments
+            response: "{ attachments: Attachment[] }"
+          - name: tasks.attachments.download
+            method: GET
+            path: /tasks/{id}/attachments/{attachmentId}/download
+            response: AttachmentDownload
+          - name: tasks.attachments.remove
+            method: DELETE
+            path: /tasks/{id}/attachments/{attachmentId}
+            response: void
+          - name: tasks.attachments.upload
+            method: composite
+            path: "(create) → PUT {upload.url} → (confirm)"
+            response: "{ attachment: Attachment }"
+            notes: >-
+                DX helper, not an endpoint. Derives sizeBytes from the payload, calls create,
+                PUTs the bytes to the presigned URL with `upload.headers` sent verbatim (they are
+                part of the signature), then confirms. A non-2xx from storage raises the SDK's API
+                error with code `upload_failed` and the storage status.
+
+    # ─────────────────────────── workers ───────────────────────────
+    - group: workers
+      plane: workspace
+      operations:
+          - name: workers.upsert
+            method: POST
+            path: /workers
+            body: UpsertWorkerInput
+            response: "{ id }"
+            notes: Body may be empty — the API then generates the worker id.
+          - name: workers.list
+            method: GET
+            path: /workers
+            response: "{ workers: string[], count }"
+          - name: workers.get
+            method: GET
+            path: /workers/{id}
+            response: WorkerDetail
+          - name: workers.patch
+            method: PATCH
+            path: /workers/{id}
+            body: PatchWorkerInput
+            response: "{ id }"
+            notes: Partial in-place update — absent fields keep their stored value.
+          - name: workers.setAvailability
+            method: POST
+            path: /workers/{id}/availability
+            body: "{ available, releaseBacklog? }"
+            response: "{ id, available, releasedTaskIds? }"
+            notes: >-
+                Pause preserves the unaccepted backlog; `releaseBacklog: true` additionally
+                requeues it (accepted work is never touched) and returns `releasedTaskIds`.
+                `releaseBacklog` is only valid when pausing — sending it with `available: true`
+                is a 400 `invalid_body`. SDKs must only emit the field when it is true.
+          - name: workers.queue
+            method: GET
+            path: /workers/{id}/queue
+            response: WorkerQueue
+          - name: workers.remove
+            method: DELETE
+            path: /workers/{id}
+            response: void
+
+    # ─────────────────────────── skills ───────────────────────────
+    - group: skills
+      plane: workspace
+      operations:
+          - name: skills.create
+            method: POST
+            path: /skills
+            body: UpsertSkillInput
+            response: Skill
+          - name: skills.list
+            method: GET
+            path: /skills
+            query: "q?, limit?"
+            response: "{ skills: Skill[] }"
+          - name: skills.patch
+            method: PATCH
+            path: /skills/{id}
+            body: PatchSkillInput
+            response: Skill
+          - name: skills.get
+            method: GET
+            path: /skills/{id}
+            response: Skill
+          - name: skills.remove
+            method: DELETE
+            path: /skills/{id}
+            response: void
+          - name: skills.suggest
+            method: GET
+            path: /skills/suggest
+            query: "selected? (comma-joined), limit?"
+            response: "{ skills: Skill[] }"
+            notes: >-
+                `selected` is an array in the SDK signature but a single comma-joined query
+                parameter on the wire. Empty/absent array must omit the parameter entirely.
+
+    # ─────────────────────────── decisions ───────────────────────────
+    - group: decisions
+      plane: workspace
+      operations:
+          - name: decisions.list
+            method: GET
+            path: /decisions
+            query: "taskId?, workerId?, limit?"
+            response: "{ decisions: Decision[] }"
+
+    # ─────────────────────────── workflows ───────────────────────────
+    - group: workflows
+      plane: workspace
+      operations:
+          - name: workflows.list
+            method: GET
+            path: /workflows
+            response: "{ workflows: WorkflowDefinitionSummary[] }"
+          - name: workflows.get
+            method: GET
+            path: /workflows/{id}
+            response: WorkflowDefinition
+          - name: workflows.save
+            method: PUT
+            path: /workflows/{id}
+            body: WorkflowDefinitionInput
+            response: WorkflowDefinition
+            notes: >-
+                Create-or-replace. The id comes from the URL, never the body. The engine validates
+                the graph (unreachable/dangling steps, missing initial step, machine handler), so a
+                bad definition returns 400 `invalid_workflow`.
+          - name: workflows.remove
+            method: DELETE
+            path: /workflows/{id}
+            response: void
+          - name: workflows.run
+            method: POST
+            path: /workflows/{id}/runs
+            body: StartRunInput
+            response: WorkflowRun
+          - name: workflows.listRuns
+            method: GET
+            path: /workflows/{id}/runs
+            query: "status?, cursor?, limit?"
+            response: "{ runs: WorkflowRun[], nextCursor? }"
+
+    - group: runs
+      plane: workspace
+      operations:
+          - name: runs.list
+            method: GET
+            path: /workflow-runs
+            query: "status?, workflowId?, cursor?, limit?"
+            response: "{ runs: WorkflowRun[], nextCursor? }"
+          - name: runs.get
+            method: GET
+            path: /workflow-runs/{runId}
+            response: WorkflowRun
+          - name: runs.steps
+            method: GET
+            path: /workflow-runs/{runId}/steps
+            response: "{ runId, status, steps: WorkflowRunStep[] }"
+          - name: runs.cancel
+            method: POST
+            path: /workflow-runs/{runId}/cancel
+            response: WorkflowRun
+          - name: runs.completeStep
+            method: POST
+            path: /workflow-runs/{runId}/steps/{stepId}/complete
+            body: "{ data? }"
+            response: WorkflowRun
+            notes: External (callback) steps only.
+          - name: runs.failStep
+            method: POST
+            path: /workflow-runs/{runId}/steps/{stepId}/fail
+            body: "{ error? }"
+            response: WorkflowRun
+
+    # ─────────────────────────── learning ───────────────────────────
+    - group: learning
+      plane: workspace
+      operations:
+          - name: learning.status
+            method: GET
+            path: /learning/status
+            response: LearningStatus
+          - name: learning.workerStats
+            method: GET
+            path: /learning/workers/{workerId}
+            response: WorkerLearningStats
+          - name: learning.previewWeights
+            method: GET
+            path: /learning/weights/preview
+            query: "workerId?"
+            response: LearnedWeightsPreview
+          - name: learning.applyWeights
+            method: POST
+            path: /learning/weights/apply
+            body: "{ workerIds? }"
+            response: "{ applied: Record<workerId, Record<tag, number>> }"
+          - name: learning.revertWeights
+            method: POST
+            path: /learning/weights/revert
+            body: "{ workerIds? }"
+            response: "{ reverted, count }"
+            notes: Restores each worker's snapshot; workers never synced are absent from the result.
+          - name: learning.feedback
+            method: POST
+            path: /tasks/{taskId}/feedback
+            body: TaskFeedbackInput
+            response: "{ ok }"
+          - name: learning.reward
+            method: POST
+            path: /tasks/{taskId}/reward
+            body: TaskRewardInput
+            response: "{ ok }"
+          - name: learning.feedbackBulk
+            method: POST
+            path: /learning/feedback
+            body: "{ items: LearningFeedbackItem[] }"
+            response: "{ results: LearningFeedbackResult[] }"
+            notes: Partial success — each result carries its own `ok` and optional `error`.
+          - name: learning.reset
+            method: POST
+            path: /learning/reset
+            response: "{ ok }"
+
+    # ─────────────────────────── notifications ───────────────────────────
+    - group: notifications.sequences
+      plane: workspace
+      operations:
+          - name: notifications.sequences.list
+            method: GET
+            path: /notification-sequences
+            response: "{ sequences: NotificationSequence[] }"
+          - name: notifications.sequences.create
+            method: POST
+            path: /notification-sequences
+            body: CreateNotificationSequenceInput
+            response: NotificationSequence
+          - name: notifications.sequences.get
+            method: GET
+            path: /notification-sequences/{id}
+            response: NotificationSequence
+          - name: notifications.sequences.update
+            method: PATCH
+            path: /notification-sequences/{id}
+            body: UpdateNotificationSequenceInput
+            response: NotificationSequence
+          - name: notifications.sequences.remove
+            method: DELETE
+            path: /notification-sequences/{id}
+            response: void
+
+    - group: notifications.channels
+      plane: workspace
+      operations:
+          - name: notifications.channels.list
+            method: GET
+            path: /notification-channels
+            response: "{ channels: NotificationChannel[] }"
+          - name: notifications.channels.create
+            method: POST
+            path: /notification-channels
+            body: CreateNotificationChannelInput
+            response: NotificationChannel
+          - name: notifications.channels.get
+            method: GET
+            path: /notification-channels/{id}
+            response: NotificationChannel
+          - name: notifications.channels.update
+            method: PATCH
+            path: /notification-channels/{id}
+            body: UpdateNotificationChannelInput
+            response: NotificationChannel
+          - name: notifications.channels.remove
+            method: DELETE
+            path: /notification-channels/{id}
+            response: void
+
+    # ─────────────────────────── teams ───────────────────────────
+    - group: teams
+      plane: workspace
+      operations:
+          - name: teams.create
+            method: POST
+            path: /teams
+            body: UpsertTeamInput
+            response: Team
+            notes: >-
+                A team is a routing primitive, not a label: the server derives a `tag` from the
+                key, and matching sees that tag. Adding a worker changes what work reaches them.
+          - name: teams.list
+            method: GET
+            path: /teams
+            response: "{ teams: Team[] }"
+          - name: teams.get
+            method: GET
+            path: /teams/{id}
+            response: Team
+          - name: teams.patch
+            method: PATCH
+            path: /teams/{id}
+            body: "{ name?, description?, color? }"
+            response: Team
+            notes: "`key` is immutable — the derived routing tag would change under live matching."
+          - name: teams.remove
+            method: DELETE
+            path: /teams/{id}
+            response: void
+          - name: teams.members
+            method: GET
+            path: /teams/{id}/members
+            response: "{ teamId, members: TeamMember[] }"
+          - name: teams.setMembers
+            method: PUT
+            path: /teams/{id}/members
+            body: "{ workerIds }"
+            response: "{ teamId, workerIds }"
+            notes: PUT, not PATCH — a worker absent from the list is removed from the team.
+
+    # ─────────────────────────── join links ───────────────────────────
+    - group: joinLinks
+      plane: workspace
+      operations:
+          - name: joinLinks.create
+            method: POST
+            path: /join-links
+            body: CreateJoinLinkInput
+            response: CreateJoinLinkResult
+            notes: >-
+                `joinUrl` is returned only here — a lost link is re-created, never recovered.
+                `maxUses: null` means unlimited; 0 would mean exhausted.
+          - name: joinLinks.list
+            method: GET
+            path: /join-links
+            response: "{ links: JoinLink[] }"
+          - name: joinLinks.revoke
+            method: DELETE
+            path: /join-links/{id}
+            response: void
+
+    # ─────────────────────────── worker identities ───────────────────────────
+    - group: identities
+      plane: workspace
+      operations:
+          - name: identities.list
+            method: GET
+            path: /worker-identities
+            response: "{ identities: PublicWorkerIdentity[] }"
+            notes: Never carries a PIN — only `hasPin`, whether one is set.
+          - name: identities.invite
+            method: POST
+            path: /worker-identities/invite
+            body: InviteWorkerIdentityInput
+            response: WorkerInviteResult
+            notes: >-
+                Creates the worker too when it does not exist (`workerCreated`). Check
+                `emailStatus`: `mailer_unconfigured` is common, and leaves `inviteUrl` as the only
+                delivery path. That URL is credential-equivalent until consumed.
+          - name: identities.resendInvite
+            method: POST
+            path: /worker-identities/{workerId}/invite/resend
+            response: WorkerInviteResult
+          - name: identities.create
+            method: POST
+            path: /workers/{workerId}/identity
+            body: CreateWorkerIdentityInput
+            response: "{ identity: PublicWorkerIdentity }"
+            notes: Sets a PIN directly, for a worker who will never receive email (a kiosk, an agent).
+          - name: identities.update
+            method: PATCH
+            path: /workers/{workerId}/identity
+            body: "{ label?, email?, pin?, status? }"
+            response: "{ identity: PublicWorkerIdentity }"
+            notes: >-
+                `email` is genuinely nullable: absent leaves it, null erases it. Revoking is a
+                `status` patch here, not a DELETE.
+          - name: identities.remove
+            method: DELETE
+            path: /workers/{workerId}/identity
+            response: void
+            notes: Removes the sign-in, not the worker — they stay routable.
+
+    # ─────────────────────────── portal link ───────────────────────────
+    - group: portal
+      plane: workspace
+      operations:
+          - name: portal
+            method: GET
+            path: /portal
+            response: WorkerPortalLink
+            notes: >-
+                Top-level method, not a resource group. A workspace with no published bundle is a
+                normal state (`exists: false`), not an error.
+
+    # ─────────────────────────── stats ───────────────────────────
+    - group: stats
+      plane: workspace
+      operations:
+          - name: stats
+            method: GET
+            path: /stats
+            response: WorkspaceStats
+            notes: Top-level method, not a resource group (mirrors the reference SDK).
+          - name: slaStats
+            method: GET
+            path: /stats/sla
+            query: "tag?"
+            response: SlaStats
+            notes: >-
+                `acceptanceRate` is null until at least one offer is recorded — 0.0 ("everyone
+                missed") and null ("nothing measured") are different answers.
+          - name: queueAudit
+            method: GET
+            path: /stats/queue-audit
+            query: "limit?, minWaitingMs?, includeHealthy?"
+            response: QueueAuditReport
+            notes: Walks the queue against the live roster — dashboard cadence, not per-request.
+          - name: history.timeseries
+            method: GET
+            path: /stats/timeseries
+            query: "from?, to?, bucket?"
+            response: StatsTimeseriesResult
+            notes: Requires the control plane; 501 `history_unavailable` on data-plane-only deployments.
+          - name: history.workers
+            method: GET
+            path: /stats/workers
+            query: "from?, to?, bucket?"
+            response: WorkerStatsResult
+            notes: Requires the control plane.
+          - name: team.presence
+            method: GET
+            path: /team/presence
+            response: TeamPresence
+            notes: Supervisor view of the same data workers see via the portal plane. Requires the control plane.
+          - name: breaks.metrics
+            method: GET
+            path: /breaks/metrics
+            query: "from?, to?"
+            response: WorkspaceBreakMetrics
+            notes: Requires the control plane.
+
+    # ─────────────────────────── worker portal plane ───────────────────────────
+    - group: worker.auth
+      plane: worker
+      operations:
+          - name: worker.login
+            method: POST
+            path: /worker-auth/login
+            body: WorkerLoginInput
+            response: WorkerSessionToken
+            notes: >-
+                Unauthenticated (no token yet). On success the client adopts the returned `wt_`
+                token AND the `workerId` from the request, so later calls need no explicit id.
+          - name: worker.logout
+            method: POST
+            path: /worker-auth/logout
+            response: void
+            notes: Revokes the session; the client must forget the token even though the body is empty.
+
+    - group: worker.tasks
+      plane: worker
+      operations:
+          - name: worker.queue
+            method: GET
+            path: /portal/workers/{id}/queue
+            response: WorkerQueue
+            notes: "`id` defaults to the logged-in worker; calling without a login or explicit id is a client-side error (`worker_id_required`), not a request."
+          - name: worker.taskDetail
+            method: GET
+            path: /portal/tasks/{id}
+            response: WorkerTaskDetail
+            notes: 404 for another worker's task — the token's scope is enforced server-side.
+          - name: worker.accept
+            method: POST
+            path: /portal/tasks/{id}/accept
+            body: "{ workerId }"
+            response: WorkerTaskResult
+          - name: worker.reject
+            method: POST
+            path: /portal/tasks/{id}/reject
+            body: "{ workerId }"
+            response: WorkerTaskResult
+          - name: worker.complete
+            method: POST
+            path: /portal/tasks/{id}/complete
+            body: "{ workerId, result? }"
+            response: WorkerTaskResult
+
+    - group: worker.breaks
+      plane: worker
+      operations:
+          - name: worker.startBreak
+            method: POST
+            path: /portal/breaks/start
+            body: "{ reason? }"
+            response: WorkerBreakStarted
+            notes: 409 when a break is already open. Pauses routing but keeps the current backlog.
+          - name: worker.endBreak
+            method: POST
+            path: /portal/breaks/end
+            response: "WorkerBreakEnded | null"
+            notes: The API returns 204 when no break was open — SDKs must surface that as null/absent, not an error.
+          - name: worker.breaksToday
+            method: GET
+            path: /portal/breaks/today
+            response: WorkerBreakToday
+          - name: worker.metricsToday
+            method: GET
+            path: /portal/metrics/today
+            response: WorkerMetricsToday
+          - name: worker.teamPresence
+            method: GET
+            path: /portal/team/presence
+            response: TeamPresence
+            notes: Visible to every worker in the workspace — the information-sharing surface.
+
+    - group: worker.session
+      plane: worker
+      operations:
+          - name: worker.refresh
+            method: POST
+            path: /worker-auth/refresh
+            response: WorkerSessionToken
+            notes: >-
+                Rotates in place. A 4xx means "re-authenticate" and returns false rather than
+                throwing; anything else (5xx, network, an older server with no route) propagates,
+                leaving the current token usable for the caller's own retry.
+          - name: worker.join
+            method: POST
+            path: /worker-auth/join
+            body: JoinWorkspaceInput
+            response: JoinWorkspaceResult
+            notes: >-
+                Unauthenticated. The worker id is server-generated — show it to them, it is their
+                PIN-login username. The client adopts the returned session. `pendingApproval`
+                means no work routes until an operator admits them.
+          - name: worker.acceptInvite
+            method: POST
+            path: /worker-auth/accept-invite
+            body: "{ token, pin }"
+            response: AcceptWorkerInviteResult
+            notes: >-
+                Unauthenticated, single-use token (replay is 400 `invalid_token`, same as expiry).
+                Setting the PIN signs them in, so the client adopts the returned session — the
+                whole point of the magic link is not retyping credentials afterwards.
+
+    - group: worker.profile
+      plane: worker
+      operations:
+          - name: worker.me
+            method: GET
+            path: /portal/me
+            response: WorkerMe
+            notes: Works on data-plane-only deployments, where break/team endpoints 501.
+          - name: worker.setAvailability
+            method: POST
+            path: /portal/me/availability
+            body: "{ available }"
+            response: "{ workerId, available }"
+            notes: >-
+                Workers are created off shift, so this is what makes someone matchable at all.
+                403 `approval_pending` while an operator must still admit a QR-join worker.
+          - name: worker.changePin
+            method: POST
+            path: /portal/me/pin
+            body: "{ currentPin, newPin }"
+            response: void
+            notes: A wrong current PIN is 400 `invalid_current_pin`; the session survives either way.
+          - name: worker.skillCatalog
+            method: GET
+            path: /portal/skills
+            response: "{ skills: Skill[] }"
+            notes: Read-only — inventing a skill is an operator's decision.
+          - name: worker.setSkills
+            method: PUT
+            path: /portal/me/skills
+            body: "{ skills: { skillId, level }[] }"
+            response: "{ workerId, skills: WorkerSkill[] }"
+            notes: Replaces the whole set. Does not change shift state; that stays a separate claim.
+          - name: worker.metricsWindow
+            method: GET
+            path: /portal/metrics
+            query: "window?"
+            response: WorkerMetricsWindow
+            notes: Defaults to `7d`. Medians are null for a worker with no history, not zero.
+          - name: worker.updateLocation
+            method: POST
+            path: /portal/workers/me/location
+            body: "{ latitude, longitude }"
+            response: WorkerLocationResult
+            notes: Rate-limited server-side (~1 per 10s) to keep churn off the matching plane.
+
+    - group: worker.comments
+      plane: worker
+      operations:
+          - name: worker.comments
+            method: GET
+            path: /portal/tasks/{id}/comments
+            query: "cursor?, limit?"
+            response: CommentPage
+          - name: worker.addComment
+            method: POST
+            path: /portal/tasks/{id}/comments
+            body: "{ body }"
+            response: "{ comment: Comment }"
+
+    - group: worker.push
+      plane: worker
+      operations:
+          - name: worker.registerDevice
+            method: POST
+            path: /portal/devices
+            body: "{ token, platform }"
+            response: WorkerDevice
+            notes: An Expo push token from the native app. Browsers use pushSubscribe instead.
+          - name: worker.unregisterDevice
+            method: DELETE
+            path: /portal/devices
+            body: "{ token }"
+            response: void
+          - name: worker.pushConfig
+            method: GET
+            path: /portal/push/config
+            response: "{ enabled, publicKey }"
+            notes: >-
+                `enabled: false` is a deployment fact, not an error. Read it before prompting for
+                notification permission — a browser gives you one prompt.
+          - name: worker.pushSubscribe
+            method: POST
+            path: /portal/push/subscriptions
+            body: "{ endpoint, keys: { p256dh, auth } }"
+            response: "{ endpoint, createdAt }"
+          - name: worker.pushUnsubscribe
+            method: DELETE
+            path: /portal/push/subscriptions
+            body: "{ endpoint }"
+            response: void
+            notes: >-
+                Endpoint only — by the time a browser fires `pushsubscriptionchange` it has
+                already discarded the keys, so requiring them would break the case this exists for.
+
+# ─────────────────────────── not SDK operations ───────────────────────────
+# Paths that exist under /v1 but are deliberately absent from every SDK. Listed so the
+# contract gate can tell "covered" from "forgotten" — an unlisted path is a gap, one here is
+# a decision. `sdk: false` keeps them out of the parity checks.
+excluded:
+    - path: /v1/worker-auth/invite
+      methods: [GET]
+      sdk: false
+      reason: >-
+          Returns a branded HTML set-your-PIN page, not JSON. It is the target a worker's email
+          client opens; the SDK operation for the flow is worker.acceptInvite (the POST).
+    - path: /v1/worker-auth/join
+      methods: [GET]
+      sdk: false
+      reason: >-
+          Returns the HTML self-registration page behind a QR code. The SDK operation is
+          worker.join (the POST).
+    - path: /v1/supervisor-auth/entry
+      methods: [GET]
+      sdk: false
+      reason: HTML entry page for the supervisor console.
+
+# ─────────────────────────── planned, not yet implemented ───────────────────────────
+# The supervisor plane: a third credential type (`sv_` session) alongside workspace keys and
+# worker tokens, for a crew lead who watches and unblocks work rather than doing it. The
+# console can already provision supervisors (FivexerAccount.console.supervisors), but no SDK
+# wraps the session plane itself. Tracked here so the gate reports it as a known gap rather
+# than silently passing. `sdk: planned` keeps these out of the parity checks until built.
+planned:
+    - group: supervisor
+      plane: supervisor
+      sdk: planned
+      paths:
+          - { method: GET, path: /v1/supervisor/me }
+          - { method: GET, path: /v1/supervisor/overview }
+          - { method: POST, path: /v1/supervisor/tasks/{id}/assign }
+          - { method: POST, path: /v1/supervisor/tasks/{id}/priority }
+          - { method: POST, path: /v1/supervisor/tasks/{id}/unpark }
+          - { method: POST, path: /v1/supervisor/workers/{workerId}/availability }
+          - { method: GET, path: /v1/supervisor/push/config }
+          - { method: POST, path: /v1/supervisor/push/subscriptions }
+          - { method: DELETE, path: /v1/supervisor/push/subscriptions }
+          - { method: POST, path: /v1/supervisor-auth/accept }
+          - { method: POST, path: /v1/supervisor-auth/logout }
+
+# ─────────────────────────── non-HTTP surface ───────────────────────────
+helpers:
+    - name: webhook.constructEvent
+      description: >-
+          Verify the `x-fivexer-signature` header (HMAC-SHA256 over `${timestamp}.${rawBody}`,
+          ±5 min replay window, constant-time compare) and return the parsed event. Pure — no
+          client, no network.
+    - name: client.quota
+      description: >-
+          Latest X-Quota-* snapshot from any workspace-plane response, success or error. Errors
+          raised from 402/429 carry the same snapshot so callers can back off.

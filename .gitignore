@@ -1,0 +1,33 @@
+# Build artifacts
+python/dist/
+python/build/
+python/.venv/
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Java / Gradle
+java/.gradle/
+java/build/
+java/*/build/
+*.class
+# Build output jars only (keep the gradle-wrapper.jar committed)
+java/build/**/*.jar
+java/build/libs/*.jar
+*.war
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+php/build
+php/vendor

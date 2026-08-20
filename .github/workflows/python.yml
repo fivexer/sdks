@@ -1,0 +1,86 @@
+name: python
+
+on:
+  push:
+    paths:
+      - python/**
+      - contract/**
+      - .github/workflows/python.yml
+  pull_request:
+    paths:
+      - python/**
+      - contract/**
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+      - name: Install
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint (ruff)
+        working-directory: python
+        run: ruff check src tests
+      - name: Type-check (mypy)
+        working-directory: python
+        run: mypy src/fivexer
+      # The 90% line+branch gate lives in pyproject.toml's pytest addopts, so a bare `pytest`
+      # enforces it identically here and on a developer's machine.
+      - name: Test with coverage gate (90% line + branch)
+        working-directory: python
+        run: pytest --durations=10
+      - name: Fail if any test is skipped
+        working-directory: python
+        run: |
+          if grep -rn "pytest.mark.skip\|pytest.skip(\|pytest.mark.xfail" tests/; then
+            echo "::error::skipped tests are not allowed"
+            exit 1
+          fi
+
+  release:
+    # Publish to PyPI on tag push. Uses OIDC trusted publishing — no long-lived tokens.
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/python-v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/fivexer/
+    permissions:
+      # id-token alone: the job publishes, it does not write to the repo.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build distributions
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          # Catches a malformed README or bad metadata here rather than after an
+          # irreversible upload — a PyPI version number can never be reused.
+          python -m twine check dist/*
+      # `twine upload` does NOT implement OIDC: it looks for a username/password or an API
+      # token and, finding neither, fails. The trusted-publishing exchange (present the
+      # workflow's OIDC JWT to PyPI, receive a short-lived token) is what this action does and
+      # twine does not — so the previous `python -m twine upload` step could never have
+      # published, despite the `id-token: write` permission above suggesting it would.
+      - name: Publish to PyPI (OIDC trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory="build/.phpunit.cache"
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         displayDetailsOnTestsThatTriggerErrors="true">
+    <!-- Deterministic (not random) execution order: PHPUnit charges its one-time coverage-
+         collection init (~140ms floor) to the first test. With a fixed order a light test
+         absorbs that floor so every test stays under the per-test time budget. -->
+    <testsuites>
+        <testsuite name="fivexer">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+    </source>
+    <coverage pathCoverage="true">
+        <report>
+            <text outputFile="php://stdout" showOnlySummary="true"/>
+            <clover outputFile="build/coverage/clover.xml"/>
+            <php outputFile="build/coverage/coverage.php"/>
+        </report>
+    </coverage>
+    <php>
+        <ini name="xdebug.mode" value="coverage"/>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="memory_limit" value="512M"/>
+    </php>
+</phpunit>

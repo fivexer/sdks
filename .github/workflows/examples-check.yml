@@ -1,0 +1,38 @@
+name: SDK example snippets
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install SDK
+        run: pip install -e ./python
+      - name: Syntax-check examples
+        run: python -m py_compile examples/python/*.py
+      - name: Import-check examples
+        run: |
+          for f in examples/python/*.py; do
+            python -c "import importlib.util; spec = importlib.util.spec_from_file_location('ex', '$f'); importlib.util.module_from_spec(spec)"
+          done
+
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Syntax-check examples
+        run: |
+          for f in examples/php/*.php; do
+            php -l "$f"
+          done

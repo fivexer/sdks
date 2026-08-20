@@ -1,0 +1,125 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id 'jacoco'
+}
+
+group = 'io.fivexer'
+version = '0.2.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    okhttpVersion = '4.12.0'
+    gsonVersion = '2.11.0'
+}
+
+dependencies {
+    // OkHttp: lightweight, Android-friendly HTTP. Gson: JSON (de)serialization.
+    api "com.squareup.okhttp3:okhttp:${okhttpVersion}"
+    implementation "com.google.code.gson:gson:${gsonVersion}"
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+// Project-level coverage gate: lines and branches must reach 90%.
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.90
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = 0.90
+            }
+        }
+    }
+}
+
+check.dependsOn jacocoTestCoverageVerification
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs << '-Xlint:all' << '-Werror'
+}
+
+javadoc {
+    options.encoding = 'UTF-8'
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+// ---- Maven Central publishing (Central Portal). Credentials + signing key are CI secrets. ----
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'fivexer-sdk'
+            pom {
+                name = 'Fivexer SDK'
+                description = 'Typed Java/JVM client for the Fivexer Platform /v1 routing API'
+                url = 'https://github.com/fivexer/sdks'
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                developers {
+                    developer { name = 'Fivexer' }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/fivexer/sdks.git'
+                    developerConnection = 'scm:git:ssh://github.com/fivexer/sdks.git'
+                    url = 'https://github.com/fivexer/sdks'
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = 'centralPortal'
+            url = 'https://central.sonatype.com/repository/maven-snapshots/'
+            credentials {
+                username = System.getenv('CENTRAL_PORTAL_USERNAME')
+                password = System.getenv('CENTRAL_PORTAL_TOKEN')
+            }
+        }
+    }
+}
+
+signing {
+    useInMemoryPgpKeys(System.getenv('SIGNING_KEY'), System.getenv('SIGNING_PASSWORD'))
+    sign publishing.publications.mavenJava
+}

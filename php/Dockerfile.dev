@@ -1,0 +1,16 @@
+FROM php:8.3-cli
+
+# Dev/test image for the Fivexer PHP SDK: Composer + Xdebug (line AND branch coverage).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git unzip \
+    && pecl install xdebug \
+    && docker-php-ext-enable xdebug \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+
+# Xdebug's mode is a system-level setting (cannot be changed at runtime); enable coverage
+# collection for every php invocation in this dev image.
+ENV XDEBUG_MODE=coverage
+
+WORKDIR /app

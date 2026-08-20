@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fivexer"
+version = "0.3.0"
+description = "Typed Python client for the Fivexer Platform /v1 routing API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+authors = [{ name = "Fivexer" }]
+keywords = ["fivexer", "routing", "task-routing", "assignment", "taskrouter", "redis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/fivexer/sdks"
+Repository = "https://github.com/fivexer/sdks"
+Documentation = "https://github.com/fivexer/sdks#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fivexer"]
+# PEP 561: without this marker mypy and pyright ignore the inline annotations entirely, so a
+# package advertising "Typing :: Typed" would ship no usable types to anyone installing it.
+artifacts = ["src/fivexer/py.typed"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The coverage gate runs on a bare `pytest`, not only in CI, so a local run cannot pass while
+# the project is below threshold. --cov-branch is what makes the 90% floor mean line AND branch.
+addopts = "-q --cov=fivexer --cov-branch --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+branch = true
+source = ["fivexer"]
+
+[tool.coverage.report]
+# Fail on either metric: pytest-cov's --cov-fail-under checks the combined rate, and with
+# branch=true that rate already folds branches in.
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

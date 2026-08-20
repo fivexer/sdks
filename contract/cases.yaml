@@ -1,0 +1,1085 @@
+# Fivexer /v1 contract cases
+#
+# The declarative source of truth for the /v1 surface. Both SDKs are hand-written;
+# these cases document the exact request each SDK must build and the exact response it
+# must parse. The shared contract-test suite (run against a real /v1 server) validates
+# that every SDK matches this.
+#
+# Reference implementation: platform/packages/sdk (TypeScript @fivexer/sdk).
+# Auth: Authorization: Bearer sk_test_/sk_live_
+# Base path: {baseUrl}/v1
+# Error envelope: { "error": { "code": "...", "message": "..." } }
+# Quota headers (any response): x-quota-{kind}-limit / x-quota-{kind}-remaining
+#   kind ∈ { task-rate, queued-tasks, workers }; retry-after (seconds) on 429.
+
+base_path: /v1
+auth:
+  header: Authorization
+  scheme: Bearer
+
+quota_headers:
+  - { field: x-quota-task-rate-limit,         model: taskRateLimit }
+  - { field: x-quota-task-rate-remaining,     model: taskRateRemaining }
+  - { field: x-quota-queued-tasks-limit,      model: queuedTasksLimit }
+  - { field: x-quota-queued-tasks-remaining,  model: queuedTasksRemaining }
+  - { field: x-quota-workers-limit,           model: workersLimit }
+  - { field: x-quota-workers-remaining,       model: workersRemaining }
+  - { field: x-quota-skills-limit,            model: skillsLimit }
+  - { field: x-quota-skills-remaining,        model: skillsRemaining }
+  - { field: x-quota-worker-skills-limit,     model: workerSkillsLimit }
+  - { field: x-quota-worker-skills-remaining, model: workerSkillsRemaining }
+
+# The worker-portal plane: a `wt_` session token scoped to exactly one worker. No quota
+# headers, no idempotency key. Cases below are tagged `plane: worker`; everything else is
+# the workspace (`sk_`) plane.
+worker_plane:
+  base_path: /v1
+  auth: { header: Authorization, scheme: Bearer, credential_prefix: "wt_" }
+
+webhook:
+  header: x-fivexer-signature
+  format: "t=<unix-ms>,v1=<hex64>"
+  algorithm: HMAC-SHA256
+  message: "${timestamp}.${rawBody}"
+  tolerance_ms: 300000   # ±5 min
+
+cases:
+  # ---- tasks ----
+  - name: create_task_minimal
+    operation: tasks.create
+    method: POST
+    path: /tasks
+    request:
+      headers: { Idempotency-Key: auto }
+      body: { tags: [english, billing] }
+    response:
+      status: 202
+      body: { id: task_8fk2, status: queued }
+      quota_headers_present: true
+
+  - name: create_task_with_priority_and_meta
+    operation: tasks.create
+    method: POST
+    path: /tasks
+    request:
+      body: { tags: [english], priority: 90, meta: { ticketId: T-441 } }
+    response:
+      status: 202
+      body: { id: task_9aa3, status: queued }
+
+  - name: create_task_duplicate_id_conflict
+    operation: tasks.create
+    method: POST
+    path: /tasks
+    request:
+      body: { id: task_8fk2, tags: [english] }
+    response:
+      status: 409
+      body: { error: { code: task_exists, message: "task task_8fk2 already exists" } }
+
+  - name: get_task
+    operation: tasks.get
+    method: GET
+    path: /tasks/task_8fk2
+    response:
+      status: 200
+      body: { id: task_8fk2, tags: [english, billing], priority: 90, status: pending, workerId: agent_1, createdAt: 1750000000000, meta: { ticketId: T-441 } }
+
+  - name: get_task_not_found
+    operation: tasks.get
+    method: GET
+    path: /tasks/missing
+    response:
+      status: 404
+      body: { error: { code: not_found, message: "task not found" } }
+
+  - name: list_tasks_default
+    operation: tasks.list
+    method: GET
+    path: /tasks
+    response:
+      status: 200
+      body: { tasks: [], nextCursor: null, hasMore: false }
+
+  - name: list_tasks_filtered_paginated
+    operation: tasks.list
+    method: GET
+    path: /tasks?status=queued&limit=50
+    response:
+      status: 200
+      body: { tasks: [{ id: task_8fk2, tags: [english], priority: 90, status: queued, workerId: null, createdAt: 1750000000000, meta: null }], nextCursor: cursor_1, hasMore: true }
+
+  - name: cancel_task
+    operation: tasks.cancel
+    method: DELETE
+    path: /tasks/task_8fk2
+    response:
+      status: 204
+      body: null
+
+  - name: accept_task
+    operation: tasks.accept
+    method: POST
+    path: /tasks/task_8fk2/accept
+    request: { body: { workerId: agent_1 } }
+    response: { status: 200, body: { id: task_8fk2, status: accepted } }
+
+  - name: reject_task
+    operation: tasks.reject
+    method: POST
+    path: /tasks/task_8fk2/reject
+    request: { body: { workerId: agent_1 } }
+    response: { status: 200, body: { id: task_8fk2, status: queued } }
+
+  - name: complete_task
+    operation: tasks.complete
+    method: POST
+    path: /tasks/task_8fk2/complete
+    request: { body: { workerId: agent_1, result: { resolved: true } } }
+    response: { status: 200, body: { id: task_8fk2, status: completed } }
+
+  # ---- workers ----
+  - name: upsert_worker_minimal
+    operation: workers.upsert
+    method: POST
+    path: /workers
+    request: { body: {} }
+    response: { status: 200, body: { id: w_abc } }
+
+  - name: upsert_worker_with_tags_and_weights
+    operation: workers.upsert
+    method: POST
+    path: /workers
+    request: { body: { id: agent_1, tags: [english, billing], routingWeights: { english: 100 } } }
+    response: { status: 200, body: { id: agent_1 } }
+
+  - name: list_workers
+    operation: workers.list
+    method: GET
+    path: /workers
+    response: { status: 200, body: { workers: [agent_1, agent_2], count: 2 } }
+
+  - name: worker_queue
+    operation: workers.queue
+    method: GET
+    path: /workers/agent_1/queue
+    response: { status: 200, body: { workerId: agent_1, taskIds: [task_8fk2] } }
+
+  - name: remove_worker
+    operation: workers.remove
+    method: DELETE
+    path: /workers/agent_1
+    response: { status: 204, body: null }
+
+  # ---- decisions ----
+  - name: list_decisions
+    operation: decisions.list
+    method: GET
+    path: /decisions?taskId=task_8fk2
+    response:
+      status: 200
+      body:
+        decisions:
+          - { id: dec_1, taskId: task_8fk2, workerId: agent_1, matchedAt: 1750000000000, mode: best-match, candidates: [{ workerId: agent_1 }] }
+
+  # ---- stats ----
+  - name: workspace_stats
+    operation: stats
+    method: GET
+    path: /stats
+    response:
+      status: 200
+      body:
+        plan: pro
+        tasks: { queued: 3, pending: 1, accepted: 2 }
+        workers: 5
+        queue:
+          oldestWaitingMs: 84000
+          perWorker:
+            - { workerId: agent_1, backlog: 2, maxBacklogSize: 5, available: true }
+            - { workerId: agent_2, backlog: 0, maxBacklogSize: 5, available: false }
+        meter: { period: "2026-07", matchedTasks: 421, includedTasksPerMonth: 50000 }
+        matching: { fairness: balanced, maxTasksPerWindow: 20, windowMs: 3600000 }
+
+  - name: workspace_stats_empty_queue
+    operation: stats
+    method: GET
+    path: /stats
+    response:
+      status: 200
+      body:
+        plan: free
+        tasks: {}
+        workers: 0
+        queue: { oldestWaitingMs: null, perWorker: [] }
+        meter: { period: "2026-07", matchedTasks: 0, includedTasksPerMonth: 1000 }
+        matching: { fairness: first-come, maxTasksPerWindow: null, windowMs: null }
+
+  # ---- tasks: operator + dry-run ----
+  - name: assign_task_from_queue
+    operation: tasks.assign
+    method: POST
+    path: /tasks/task_8fk2/assign
+    request: { body: { workerId: agent_1 } }
+    response:
+      status: 200
+      body: { id: task_8fk2, status: pending, workerId: agent_1, previousWorkerId: null }
+
+  - name: assign_task_reassignment_reports_previous_worker
+    operation: tasks.assign
+    method: POST
+    path: /tasks/task_8fk2/assign
+    request: { body: { workerId: agent_2, force: true } }
+    response:
+      status: 200
+      body: { id: task_8fk2, status: pending, workerId: agent_2, previousWorkerId: agent_1 }
+
+  - name: assign_task_rejected_by_backlog_cap
+    operation: tasks.assign
+    method: POST
+    path: /tasks/task_8fk2/assign
+    request: { body: { workerId: agent_1 } }
+    response:
+      status: 409
+      body: { error: { code: worker_backlog_full, message: "agent_1 is at its backlog limit" } }
+
+  - name: set_task_priority
+    operation: tasks.setPriority
+    method: PATCH
+    path: /tasks/task_8fk2
+    request: { body: { priority: 95 } }
+    response: { status: 200, body: { id: task_8fk2, priority: 95 } }
+
+  - name: suggest_workers
+    operation: tasks.suggestWorkers
+    method: POST
+    path: /tasks/suggest-workers
+    request: { body: { tags: [english, billing], priority: 90, limit: 2 } }
+    response:
+      status: 200
+      body:
+        tags: [english, billing]
+        priority: 90
+        workers:
+          - { workerId: agent_1, eligible: true, score: 180, effectivePriority: 90, reasons: [{ tag: english, weight: 100 }] }
+          - { workerId: agent_2, eligible: false, score: 0, effectivePriority: 90, reasons: [{ vetoed: true }] }
+
+  # ---- tasks: rich data (context / comments / attachments) ----
+  - name: get_task_context
+    operation: tasks.context.get
+    method: GET
+    path: /tasks/task_8fk2/context
+    response:
+      status: 200
+      body:
+        taskId: task_8fk2
+        title: "Refund request"
+        description: "Customer wants a refund for order 41"
+        context: { orderId: "41" }
+        references: [{ id: ref_1, url: "https://crm.example/o/41", label: "Order 41", contentType: text/html }]
+        createdAt: 1750000000000
+        updatedAt: 1750000900000
+
+  - name: set_task_context
+    operation: tasks.context.set
+    method: PUT
+    path: /tasks/task_8fk2/context
+    request:
+      body:
+        title: "Refund request"
+        references: [{ url: "https://crm.example/o/41", label: "Order 41" }]
+    response:
+      status: 200
+      body:
+        taskId: task_8fk2
+        title: "Refund request"
+        description: null
+        context: null
+        references: [{ id: ref_1, url: "https://crm.example/o/41", label: "Order 41" }]
+        createdAt: 1750000000000
+        updatedAt: 1750000900000
+
+  - name: clear_task_context
+    operation: tasks.context.clear
+    method: DELETE
+    path: /tasks/task_8fk2/context
+    response: { status: 204, body: null }
+
+  - name: add_comment_as_worker
+    operation: tasks.comments.add
+    method: POST
+    path: /tasks/task_8fk2/comments
+    request: { body: { body: "Called the customer back", workerId: agent_1 } }
+    response:
+      status: 201
+      body:
+        comment:
+          id: cmt_1
+          taskId: task_8fk2
+          author: { type: worker, id: agent_1, label: "Ada" }
+          body: "Called the customer back"
+          createdAt: 1750001000000
+
+  - name: list_comments_paginated
+    operation: tasks.comments.list
+    method: GET
+    path: /tasks/task_8fk2/comments?limit=1
+    response:
+      status: 200
+      body:
+        comments:
+          - { id: cmt_1, taskId: task_8fk2, author: { type: api, id: null, label: null }, body: "Escalated", createdAt: 1750001000000 }
+        nextCursor: cursor_c1
+        hasMore: true
+
+  - name: remove_comment
+    operation: tasks.comments.remove
+    method: DELETE
+    path: /tasks/task_8fk2/comments/cmt_1
+    response: { status: 204, body: null }
+
+  - name: create_attachment_returns_presigned_upload
+    operation: tasks.attachments.create
+    method: POST
+    path: /tasks/task_8fk2/attachments
+    request: { body: { filename: "receipt.pdf", contentType: application/pdf, sizeBytes: 20480 } }
+    response:
+      status: 201
+      body:
+        attachment:
+          id: att_1
+          taskId: task_8fk2
+          filename: "receipt.pdf"
+          contentType: application/pdf
+          sizeBytes: 20480
+          status: pending
+          uploader: { type: api, id: null }
+          createdAt: 1750001000000
+          confirmedAt: null
+        upload:
+          url: "https://storage.example/bucket/att_1?sig=abc"
+          method: PUT
+          headers: { content-type: application/pdf }
+          expiresAt: 1750004600000
+
+  - name: confirm_attachment
+    operation: tasks.attachments.confirm
+    method: POST
+    path: /tasks/task_8fk2/attachments/att_1/confirm
+    response:
+      status: 200
+      body:
+        attachment:
+          id: att_1
+          taskId: task_8fk2
+          filename: "receipt.pdf"
+          contentType: application/pdf
+          sizeBytes: 20480
+          status: ready
+          uploader: { type: api, id: null }
+          createdAt: 1750001000000
+          confirmedAt: 1750001100000
+
+  - name: list_attachments
+    operation: tasks.attachments.list
+    method: GET
+    path: /tasks/task_8fk2/attachments
+    response: { status: 200, body: { attachments: [] } }
+
+  - name: download_attachment
+    operation: tasks.attachments.download
+    method: GET
+    path: /tasks/task_8fk2/attachments/att_1/download
+    response:
+      status: 200
+      body: { url: "https://storage.example/bucket/att_1?dl=1", expiresAt: 1750004600000 }
+
+  - name: remove_attachment
+    operation: tasks.attachments.remove
+    method: DELETE
+    path: /tasks/task_8fk2/attachments/att_1
+    response: { status: 204, body: null }
+
+  - name: attachments_unavailable_without_object_store
+    operation: tasks.attachments.create
+    method: POST
+    path: /tasks/task_8fk2/attachments
+    request: { body: { filename: "a.pdf", contentType: application/pdf, sizeBytes: 1 } }
+    response:
+      status: 501
+      body: { error: { code: storage_unavailable, message: "object storage is not configured" } }
+
+  # ---- workers: detail, patch, availability ----
+  - name: get_worker_detail
+    operation: workers.get
+    method: GET
+    path: /workers/agent_1
+    response:
+      status: 200
+      body:
+        id: agent_1
+        tags: [english, billing]
+        routingWeights: { english: 100, billing: 50 }
+        skills: [{ skillId: skl_1, key: refunds, name: Refunds, level: 4, weightOverride: null, weight: 80 }]
+        maxBacklogSize: 5
+        available: true
+        queueDepth: 2
+
+  - name: patch_worker_partial
+    operation: workers.patch
+    method: PATCH
+    path: /workers/agent_1
+    request: { body: { tags: [english], maxBacklogSize: 3 } }
+    response: { status: 200, body: { id: agent_1 } }
+
+  - name: pause_worker_keeps_backlog
+    operation: workers.setAvailability
+    method: POST
+    path: /workers/agent_1/availability
+    request: { body: { available: false } }
+    response: { status: 200, body: { id: agent_1, available: false } }
+
+  - name: pause_worker_releasing_backlog_returns_requeued_task_ids
+    operation: workers.setAvailability
+    method: POST
+    path: /workers/agent_1/availability
+    request: { body: { available: false, releaseBacklog: true } }
+    response:
+      status: 200
+      body: { id: agent_1, available: false, releasedTaskIds: [task_8fk2, task_9aa3] }
+
+  - name: resume_worker
+    operation: workers.setAvailability
+    method: POST
+    path: /workers/agent_1/availability
+    request: { body: { available: true } }
+    response: { status: 200, body: { id: agent_1, available: true } }
+
+  - name: release_backlog_on_resume_is_rejected
+    operation: workers.setAvailability
+    method: POST
+    path: /workers/agent_1/availability
+    request: { body: { available: true, releaseBacklog: true } }
+    response:
+      status: 400
+      body: { error: { code: invalid_body, message: "releaseBacklog is only valid when pausing" } }
+
+  # ---- skills ----
+  - name: create_skill
+    operation: skills.create
+    method: POST
+    path: /skills
+    request: { body: { key: refunds, name: Refunds, description: "Handles refund requests" } }
+    response:
+      status: 201
+      body: { id: skl_1, key: refunds, name: Refunds, description: "Handles refund requests", createdAt: "2026-07-24T10:00:00.000Z" }
+
+  - name: list_skills_search
+    operation: skills.list
+    method: GET
+    path: /skills?q=ref&limit=10
+    response:
+      status: 200
+      body: { skills: [{ id: skl_1, key: refunds, name: Refunds, description: null, createdAt: "2026-07-24T10:00:00.000Z" }] }
+
+  - name: patch_skill
+    operation: skills.patch
+    method: PATCH
+    path: /skills/skl_1
+    request: { body: { name: "Refunds & credits" } }
+    response:
+      status: 200
+      body: { id: skl_1, key: refunds, name: "Refunds & credits", description: null, createdAt: "2026-07-24T10:00:00.000Z" }
+
+  - name: remove_skill
+    operation: skills.remove
+    method: DELETE
+    path: /skills/skl_1
+    response: { status: 204, body: null }
+
+  - name: suggest_skills_joins_selected_into_one_param
+    operation: skills.suggest
+    method: GET
+    path: /skills/suggest?selected=refunds,billing&limit=5
+    response: { status: 200, body: { skills: [] } }
+    notes: >-
+      The SDK signature takes a list; the wire carries one comma-joined `selected` parameter.
+      An empty or absent list must omit the parameter entirely.
+
+  # ---- workflows ----
+  - name: list_workflow_definitions
+    operation: workflows.list
+    method: GET
+    path: /workflows
+    response: { status: 200, body: { workflows: [{ id: wf_onboard, name: Onboarding }] } }
+
+  - name: get_workflow_definition
+    operation: workflows.get
+    method: GET
+    path: /workflows/wf_onboard
+    response:
+      status: 200
+      body:
+        id: wf_onboard
+        name: Onboarding
+        version: 2
+        initialStepId: collect
+        defaultTimeoutMs: 600000
+        steps:
+          - { id: collect, name: "Collect docs", taskType: assignment, assignmentTemplate: { tags: [english] }, defaultNextStepId: review }
+          - { id: review, name: Review, taskType: external, external: { name: compliance }, timeoutMs: 300000, defaultNextStepId: null }
+
+  - name: save_workflow_definition
+    operation: workflows.save
+    method: PUT
+    path: /workflows/wf_onboard
+    request:
+      body:
+        name: Onboarding
+        initialStepId: collect
+        steps: [{ id: collect, name: "Collect docs", taskType: assignment, defaultNextStepId: null }]
+    response:
+      status: 200
+      body:
+        id: wf_onboard
+        name: Onboarding
+        version: 1
+        initialStepId: collect
+        steps: [{ id: collect, name: "Collect docs", taskType: assignment, defaultNextStepId: null }]
+
+  - name: save_workflow_definition_rejects_invalid_graph
+    operation: workflows.save
+    method: PUT
+    path: /workflows/wf_broken
+    request: { body: { name: Broken, initialStepId: missing, steps: [] } }
+    response:
+      status: 400
+      body: { error: { code: invalid_workflow, message: "initial step 'missing' is not defined" } }
+
+  - name: remove_workflow_definition
+    operation: workflows.remove
+    method: DELETE
+    path: /workflows/wf_onboard
+    response: { status: 204, body: null }
+
+  - name: start_workflow_run
+    operation: workflows.run
+    method: POST
+    path: /workflows/wf_onboard/runs
+    request: { body: { context: { customerId: c_1 }, initiatorWorkerId: agent_1 } }
+    response:
+      status: 201
+      body:
+        id: run_1
+        workflowId: wf_onboard
+        status: active
+        currentStepId: collect
+        currentTaskId: task_8fk2
+        initiatorWorkerId: agent_1
+        context: { customerId: c_1 }
+        definitionVersion: 2
+        history: []
+        parallelBranches: null
+        createdAt: 1750000000000
+        updatedAt: 1750000000000
+
+  - name: list_runs_of_one_definition
+    operation: workflows.listRuns
+    method: GET
+    path: /workflows/wf_onboard/runs?status=active&limit=25
+    response: { status: 200, body: { runs: [], nextCursor: null } }
+
+  # ---- workflow runs ----
+  - name: list_all_runs
+    operation: runs.list
+    method: GET
+    path: /workflow-runs?status=completed&workflowId=wf_onboard
+    response: { status: 200, body: { runs: [], nextCursor: null } }
+
+  - name: get_run_with_history
+    operation: runs.get
+    method: GET
+    path: /workflow-runs/run_1
+    response:
+      status: 200
+      body:
+        id: run_1
+        workflowId: wf_onboard
+        status: completed
+        currentStepId: null
+        currentTaskId: null
+        initiatorWorkerId: agent_1
+        context: {}
+        definitionVersion: 2
+        history:
+          - { stepId: collect, taskId: task_8fk2, workerId: agent_1, completedAt: 1750000500000, result: { ok: true } }
+        parallelBranches: null
+        createdAt: 1750000000000
+        updatedAt: 1750000500000
+
+  - name: run_step_states
+    operation: runs.steps
+    method: GET
+    path: /workflow-runs/run_1/steps
+    response:
+      status: 200
+      body:
+        runId: run_1
+        status: active
+        steps:
+          - { stepId: collect, name: "Collect docs", taskType: assignment, state: completed, taskId: task_8fk2, workerId: agent_1, completedAt: 1750000500000, result: { ok: true } }
+          - { stepId: review, name: Review, taskType: external, state: awaiting_callback, taskId: null, workerId: null, completedAt: null, result: null }
+
+  - name: cancel_run
+    operation: runs.cancel
+    method: POST
+    path: /workflow-runs/run_1/cancel
+    response:
+      status: 200
+      body: { id: run_1, workflowId: wf_onboard, status: cancelled, currentStepId: null, currentTaskId: null, initiatorWorkerId: agent_1, context: {}, definitionVersion: 2, history: [], parallelBranches: null, createdAt: 1750000000000, updatedAt: 1750000600000 }
+
+  - name: complete_external_step
+    operation: runs.completeStep
+    method: POST
+    path: /workflow-runs/run_1/steps/review/complete
+    request: { body: { data: { approved: true } } }
+    response:
+      status: 200
+      body: { id: run_1, workflowId: wf_onboard, status: active, currentStepId: notify, currentTaskId: null, initiatorWorkerId: agent_1, context: { approved: true }, definitionVersion: 2, history: [], parallelBranches: null, createdAt: 1750000000000, updatedAt: 1750000700000 }
+
+  - name: fail_external_step
+    operation: runs.failStep
+    method: POST
+    path: /workflow-runs/run_1/steps/review/fail
+    request: { body: { error: "compliance system unreachable" } }
+    response:
+      status: 200
+      body: { id: run_1, workflowId: wf_onboard, status: failed, currentStepId: review, currentTaskId: null, initiatorWorkerId: agent_1, context: {}, definitionVersion: 2, history: [], parallelBranches: null, createdAt: 1750000000000, updatedAt: 1750000700000 }
+
+  # ---- learning ----
+  - name: learning_status
+    operation: learning.status
+    method: GET
+    path: /learning/status
+    response:
+      status: 200
+      body:
+        enabled: true
+        shadowMode: false
+        autoWeights: true
+        signalWeights: { csat: 1.0 }
+        rewards: { accept: 1, complete: 2, reject: -1 }
+        stats: { decisions: 1200, rewards: 800, totalReward: 940.5, averageReward: 1.175 }
+        modelSize: 64
+
+  - name: learning_status_before_any_rewards
+    operation: learning.status
+    method: GET
+    path: /learning/status
+    response:
+      status: 200
+      body: { enabled: false, shadowMode: true, autoWeights: false, stats: null, modelSize: 0 }
+
+  - name: learning_worker_stats
+    operation: learning.workerStats
+    method: GET
+    path: /learning/workers/agent_1
+    response:
+      status: 200
+      body:
+        workerId: agent_1
+        skills:
+          - { tag: english, count: 40, meanReward: 1.4, currentWeight: 100, learnedWeight: 118, skill: null }
+          - { tag: "skill:skl_1", count: 12, meanReward: 0.2, currentWeight: null, learnedWeight: 55, skill: { id: skl_1, name: Refunds } }
+
+  - name: preview_learned_weights_for_one_worker
+    operation: learning.previewWeights
+    method: GET
+    path: /learning/weights/preview?workerId=agent_1
+    response:
+      status: 200
+      body: { workers: [{ workerId: agent_1, current: { english: 100 }, learned: { english: 118 } }] }
+
+  - name: apply_learned_weights
+    operation: learning.applyWeights
+    method: POST
+    path: /learning/weights/apply
+    request: { body: { workerIds: [agent_1] } }
+    response: { status: 200, body: { applied: { agent_1: { english: 118 } } } }
+
+  - name: submit_task_feedback_signals
+    operation: learning.feedback
+    method: POST
+    path: /tasks/task_8fk2/feedback
+    request: { body: { signals: { csat: 0.9, handleTime: -0.2 } } }
+    response: { status: 200, body: { ok: true } }
+
+  - name: submit_task_reward
+    operation: learning.reward
+    method: POST
+    path: /tasks/task_8fk2/reward
+    request: { body: { reward: 1.5 } }
+    response: { status: 200, body: { ok: true } }
+
+  - name: bulk_feedback_reports_per_item_outcome
+    operation: learning.feedbackBulk
+    method: POST
+    path: /learning/feedback
+    request: { body: { items: [{ taskId: task_8fk2, reward: 1 }, { taskId: missing, signals: { csat: 1 } }] } }
+    response:
+      status: 200
+      body:
+        results:
+          - { taskId: task_8fk2, ok: true }
+          - { taskId: missing, ok: false, error: "no decision recorded for task" }
+
+  - name: reset_learning_model
+    operation: learning.reset
+    method: POST
+    path: /learning/reset
+    response: { status: 200, body: { ok: true } }
+
+  # ---- notifications ----
+  - name: list_notification_sequences
+    operation: notifications.sequences.list
+    method: GET
+    path: /notification-sequences
+    response: { status: 200, body: { sequences: [] } }
+
+  - name: create_notification_sequence
+    operation: notifications.sequences.create
+    method: POST
+    path: /notification-sequences
+    request:
+      body:
+        name: "Escalate stale tasks"
+        steps: [{ trigger: matched, offsetMs: 300000, eventType: task.expiring }]
+        filterTags: [billing]
+    response:
+      status: 201
+      body:
+        id: seq_1
+        name: "Escalate stale tasks"
+        enabled: true
+        steps: [{ trigger: matched, offsetMs: 300000, eventType: task.expiring }]
+        filterTags: [billing]
+        createdAt: "2026-07-24T10:00:00.000Z"
+        updatedAt: "2026-07-24T10:00:00.000Z"
+
+  - name: get_notification_sequence
+    operation: notifications.sequences.get
+    method: GET
+    path: /notification-sequences/seq_1
+    response:
+      status: 200
+      body: { id: seq_1, name: "Escalate stale tasks", enabled: true, steps: [], filterTags: [], createdAt: "2026-07-24T10:00:00.000Z", updatedAt: "2026-07-24T10:00:00.000Z" }
+
+  - name: disable_notification_sequence
+    operation: notifications.sequences.update
+    method: PATCH
+    path: /notification-sequences/seq_1
+    request: { body: { enabled: false } }
+    response:
+      status: 200
+      body: { id: seq_1, name: "Escalate stale tasks", enabled: false, steps: [], filterTags: [], createdAt: "2026-07-24T10:00:00.000Z", updatedAt: "2026-07-24T11:00:00.000Z" }
+
+  - name: remove_notification_sequence
+    operation: notifications.sequences.remove
+    method: DELETE
+    path: /notification-sequences/seq_1
+    response: { status: 204, body: null }
+
+  - name: list_notification_channels
+    operation: notifications.channels.list
+    method: GET
+    path: /notification-channels
+    response: { status: 200, body: { channels: [] } }
+
+  - name: create_webhook_channel
+    operation: notifications.channels.create
+    method: POST
+    path: /notification-channels
+    request: { body: { type: webhook, target: "https://hooks.example/fivexer", events: [task.matched, task.completed], secret: "whsec_abc" } }
+    response:
+      status: 201
+      body: { id: ch_1, type: webhook, target: "https://hooks.example/fivexer", events: [task.matched, task.completed], disabled: false, createdAt: "2026-07-24T10:00:00.000Z" }
+    notes: The secret is write-only — it is never echoed back on any read.
+
+  - name: get_notification_channel
+    operation: notifications.channels.get
+    method: GET
+    path: /notification-channels/ch_1
+    response:
+      status: 200
+      body: { id: ch_1, type: webhook, target: "https://hooks.example/fivexer", events: [task.matched], disabled: false, createdAt: "2026-07-24T10:00:00.000Z" }
+
+  - name: disable_notification_channel
+    operation: notifications.channels.update
+    method: PATCH
+    path: /notification-channels/ch_1
+    request: { body: { disabled: true } }
+    response:
+      status: 200
+      body: { id: ch_1, type: webhook, target: "https://hooks.example/fivexer", events: [task.matched], disabled: true, createdAt: "2026-07-24T10:00:00.000Z" }
+
+  - name: remove_notification_channel
+    operation: notifications.channels.remove
+    method: DELETE
+    path: /notification-channels/ch_1
+    response: { status: 204, body: null }
+
+  # ---- historical stats + supervisor views (control plane required) ----
+  - name: stats_timeseries
+    operation: history.timeseries
+    method: GET
+    path: /stats/timeseries?from=2026-07-23T00:00:00.000Z&to=2026-07-24T00:00:00.000Z&bucket=hour
+    response:
+      status: 200
+      body:
+        from: "2026-07-23T00:00:00.000Z"
+        to: "2026-07-24T00:00:00.000Z"
+        bucket: hour
+        buckets:
+          - { bucketStart: "2026-07-23T00:00:00.000Z", completed: 12, cancelled: 1, avgWaitMs: 4200, p50WaitMs: 3000, p95WaitMs: 11000, avgHandleMs: 90000 }
+          - { bucketStart: "2026-07-23T01:00:00.000Z", completed: 0, cancelled: 0, avgWaitMs: null, p50WaitMs: null, p95WaitMs: null, avgHandleMs: null }
+
+  - name: stats_timeseries_requires_control_plane
+    operation: history.timeseries
+    method: GET
+    path: /stats/timeseries
+    response:
+      status: 501
+      body: { error: { code: history_unavailable, message: "historical stats require the control plane" } }
+
+  - name: worker_productivity_stats
+    operation: history.workers
+    method: GET
+    path: /stats/workers?from=2026-07-23T00:00:00.000Z
+    response:
+      status: 200
+      body:
+        from: "2026-07-23T00:00:00.000Z"
+        to: "2026-07-24T00:00:00.000Z"
+        workers:
+          - { workerId: agent_1, completed: 12, cancelled: 1, avgWaitMs: 4200, avgHandleMs: 90000 }
+
+  - name: team_presence_supervisor_view
+    operation: team.presence
+    method: GET
+    path: /team/presence
+    response:
+      status: 200
+      body:
+        workers:
+          - { workerId: agent_1, label: Ada, status: working }
+          - { workerId: agent_2, label: Grace, status: on-break, breakStartedAt: "2026-07-24T11:30:00.000Z", breakReason: lunch }
+          - { workerId: agent_3, label: Alan, status: paused }
+        counts: { working: 1, onBreak: 1, paused: 1, total: 3 }
+
+  - name: workspace_break_metrics
+    operation: breaks.metrics
+    method: GET
+    path: /breaks/metrics?from=2026-07-24T00:00:00.000Z&to=2026-07-24T23:59:59.999Z
+    response:
+      status: 200
+      body:
+        workers:
+          - { workerId: agent_2, label: Grace, count: 2, totalBreakMs: 2700000, longestBreakMs: 1800000, active: true }
+        totalBreakMs: 2700000
+        breakCount: 2
+        activeCount: 1
+
+  # ---- worker portal plane (wt_ token) ----
+  - name: worker_login_adopts_token_and_worker_id
+    plane: worker
+    operation: worker.login
+    method: POST
+    path: /worker-auth/login
+    request: { body: { workspaceId: ws_1, workerId: agent_1, pin: "4821" } }
+    response: { status: 200, body: { token: "wt_s3ss10n" } }
+    notes: >-
+      Sent without an Authorization header (no token yet). On success the client adopts both the
+      token and the workerId from the request, so later calls need no explicit id.
+
+  - name: worker_login_rejects_bad_pin
+    plane: worker
+    operation: worker.login
+    method: POST
+    path: /worker-auth/login
+    request: { body: { workspaceId: ws_1, workerId: agent_1, pin: "0000" } }
+    response: { status: 401, body: { error: { code: invalid_credentials, message: "invalid worker credentials" } } }
+
+  - name: worker_logout_forgets_token
+    plane: worker
+    operation: worker.logout
+    method: POST
+    path: /worker-auth/logout
+    response: { status: 204, body: null }
+
+  - name: worker_reads_own_queue
+    plane: worker
+    operation: worker.queue
+    method: GET
+    path: /portal/workers/agent_1/queue
+    response: { status: 200, body: { workerId: agent_1, taskIds: [task_8fk2] } }
+
+  - name: worker_task_detail
+    plane: worker
+    operation: worker.taskDetail
+    method: GET
+    path: /portal/tasks/task_8fk2
+    response:
+      status: 200
+      body:
+        id: task_8fk2
+        status: pending
+        tags: [english, billing]
+        priority: 90
+        title: "Refund request"
+        description: "Customer wants a refund for order 41"
+        context: { orderId: "41" }
+        references: [{ id: ref_1, url: "https://crm.example/o/41", label: "Order 41" }]
+        createdAt: 1750000000000
+
+  - name: worker_cannot_read_another_workers_task
+    plane: worker
+    operation: worker.taskDetail
+    method: GET
+    path: /portal/tasks/task_other
+    response: { status: 404, body: { error: { code: not_found, message: "task not found" } } }
+
+  - name: worker_accepts_task
+    plane: worker
+    operation: worker.accept
+    method: POST
+    path: /portal/tasks/task_8fk2/accept
+    request: { body: { workerId: agent_1 } }
+    response: { status: 200, body: { id: task_8fk2, status: accepted } }
+
+  - name: worker_rejects_task
+    plane: worker
+    operation: worker.reject
+    method: POST
+    path: /portal/tasks/task_8fk2/reject
+    request: { body: { workerId: agent_1 } }
+    response: { status: 200, body: { id: task_8fk2, status: queued } }
+
+  - name: worker_completes_task_with_result
+    plane: worker
+    operation: worker.complete
+    method: POST
+    path: /portal/tasks/task_8fk2/complete
+    request: { body: { workerId: agent_1, result: { refunded: true } } }
+    response: { status: 200, body: { id: task_8fk2, status: completed } }
+
+  - name: worker_starts_break
+    plane: worker
+    operation: worker.startBreak
+    method: POST
+    path: /portal/breaks/start
+    request: { body: { reason: lunch } }
+    response: { status: 200, body: { workerId: agent_1, onBreak: true, since: "2026-07-24T11:30:00.000Z" } }
+
+  - name: worker_cannot_start_a_second_break
+    plane: worker
+    operation: worker.startBreak
+    method: POST
+    path: /portal/breaks/start
+    request: { body: {} }
+    response: { status: 409, body: { error: { code: break_already_open, message: "a break is already open" } } }
+
+  - name: worker_ends_break
+    plane: worker
+    operation: worker.endBreak
+    method: POST
+    path: /portal/breaks/end
+    response: { status: 200, body: { workerId: agent_1, onBreak: false, endedAt: "2026-07-24T12:00:00.000Z" } }
+
+  - name: ending_break_when_none_open_yields_nothing
+    plane: worker
+    operation: worker.endBreak
+    method: POST
+    path: /portal/breaks/end
+    response: { status: 204, body: null }
+    notes: Must surface as null/absent in every SDK — a 204 here is a normal outcome, not an error.
+
+  - name: worker_breaks_today
+    plane: worker
+    operation: worker.breaksToday
+    method: GET
+    path: /portal/breaks/today
+    response:
+      status: 200
+      body:
+        workerId: agent_1
+        since: "2026-07-24T00:00:00.000Z"
+        breaks:
+          - { id: brk_1, startedAt: "2026-07-24T11:30:00.000Z", endedAt: "2026-07-24T12:00:00.000Z", reason: lunch, durationMs: 1800000 }
+        active: null
+        completedTasks: 7
+        totalBreakMs: 1800000
+
+  - name: worker_metrics_today
+    plane: worker
+    operation: worker.metricsToday
+    method: GET
+    path: /portal/metrics/today
+    response:
+      status: 200
+      body:
+        workerId: agent_1
+        since: "2026-07-24T00:00:00.000Z"
+        completedTasks: 7
+        breakCount: 1
+        totalBreakMs: 1800000
+        longestBreakMs: 1800000
+        workingMs: 25200000
+
+  - name: worker_team_presence
+    plane: worker
+    operation: worker.teamPresence
+    method: GET
+    path: /portal/team/presence
+    response:
+      status: 200
+      body:
+        workers: [{ workerId: agent_1, label: Ada, status: working }]
+        counts: { working: 1, onBreak: 0, paused: 0, total: 1 }
+
+  # ---- cross-cutting error shapes ----
+  - name: rate_limited_carries_retry_after_and_quota
+    operation: tasks.create
+    method: POST
+    path: /tasks
+    request: { body: { tags: [x] } }
+    response:
+      status: 429
+      headers: { retry-after: "60", x-quota-task-rate-limit: "300", x-quota-task-rate-remaining: "0" }
+      body: { error: { code: rate_limited, message: "task creation rate above 300/min" } }
+
+  - name: plan_limit_carries_quota
+    operation: tasks.create
+    method: POST
+    path: /tasks
+    request: { body: { tags: [x] } }
+    response:
+      status: 402
+      headers: { x-quota-queued-tasks-limit: "50000", x-quota-queued-tasks-remaining: "0" }
+      body: { error: { code: plan_limit_exceeded, message: "queued task limit of 50000 reached" } }
+
+  - name: validation_failed
+    operation: tasks.create
+    method: POST
+    path: /tasks
+    request: { body: {} }
+    response:
+      status: 400
+      body: { error: { code: validation_failed, message: "body must have required property 'tags'" } }
+
+  - name: unauthorized
+    operation: tasks.list
+    method: GET
+    path: /tasks
+    response:
+      status: 401
+      body: { error: { code: unauthorized, message: "missing or invalid API key" } }

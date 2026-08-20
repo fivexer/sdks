@@ -1,0 +1,81 @@
+name: php
+
+on:
+  push:
+    paths:
+      - php/**
+      - contract/**
+      - .github/workflows/php.yml
+  pull_request:
+    paths:
+      - php/**
+      - contract/**
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        php: ["8.1", "8.2", "8.3", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json, mbstring
+          # Xdebug is what supplies branch data; the line-only drivers cannot feed the gate.
+          coverage: xdebug
+        env:
+          COMPOSER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install dependencies
+        working-directory: php
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # Two runs on purpose. Xdebug's branch/path collection adds a fixed ~170ms of
+      # post-processing to EVERY test, which measures the profiler rather than the test — so the
+      # per-test time budget is checked on an uninstrumented run, and the coverage gate gets its
+      # own instrumented run.
+      - name: Test and enforce the per-test time budget (200ms)
+        working-directory: php
+        run: |
+          vendor/bin/phpunit --no-coverage --log-junit build/junit.xml
+          php bin/check-timings.php build/junit.xml 0.2
+
+      - name: Coverage gate (90% line + branch)
+        working-directory: php
+        run: |
+          vendor/bin/phpunit
+          php bin/check-coverage.php
+
+      - name: Fail if any test is skipped
+        working-directory: php
+        run: |
+          if grep -rn "markTestSkipped\|markTestIncomplete\|#\[Group('skip')\]" tests/; then
+            echo "::error::skipped tests are not allowed"
+            exit 1
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-coverage-${{ matrix.os }}-php${{ matrix.php }}
+          path: php/build/coverage/
+
+  release:
+    # Packagist picks the package up from the git tag; this job only guards the tag.
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/php-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json, mbstring
+      - name: Validate composer.json
+        working-directory: php
+        run: composer validate --strict

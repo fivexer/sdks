@@ -1,0 +1,68 @@
+name: contract-sync
+
+# Two separable questions, deliberately kept apart:
+#
+#  1. Is contract/openapi.json in sync with the platform's generated spec?  Only answerable
+#     where the (private) platform repo is reachable — a local checkout, or a CI run holding
+#     PLATFORM_REPO_TOKEN. When it is not reachable this job says so and does NOT claim to
+#     have verified it. The previous version of this workflow claimed the check in its header
+#     but never fetched the platform spec, so 58 operations of drift accumulated unnoticed.
+#
+#  2. Are contract/operations.yaml and contract/cases.yaml complete against that snapshot?
+#     Needs no platform access, so it always runs and is the gate that actually blocks a merge.
+
+on:
+    push:
+        paths:
+            - contract/**
+            - scripts/sync-contract.py
+            - .github/workflows/contract-sync.yml
+    pull_request:
+        paths:
+            - contract/**
+            - scripts/sync-contract.py
+    schedule:
+        - cron: "0 6 * * *"
+
+jobs:
+    spec-well-formed:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate OpenAPI spec is well-formed
+              run: npx -y @redocly/cli@latest lint contract/openapi.json
+
+    catalogue-complete:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+            # Every /v1 operation in the snapshot must have an operations.yaml entry (the SDK
+            # parity checklist each language's ContractParityTest walks) and a cases.yaml case.
+            - name: Catalogue and cases cover every /v1 operation
+              run: scripts/sync-contract.py --gaps-only
+
+    drift:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+            # Absent a token this checkout step is skipped and --check degrades to a notice,
+            # so forks and PRs from outside the org do not fail on a secret they cannot have.
+            - name: Check out the platform repo (private)
+              if: env.PLATFORM_REPO_TOKEN != ''
+              env:
+                  PLATFORM_REPO_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN }}
+              uses: actions/checkout@v4
+              with:
+                  repository: fivexer/platform
+                  token: ${{ secrets.PLATFORM_REPO_TOKEN }}
+                  path: .platform
+            - name: Fail if contract/openapi.json has drifted from the platform spec
+              env:
+                  FIVEXER_PLATFORM: .platform
+              run: scripts/sync-contract.py --check
