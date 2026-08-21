@@ -27,7 +27,7 @@ the decision trail says who was considered and why.
 | Language | Package | Install |
 |---|---|---|
 | Python | [`fivexer`](https://pypi.org/project/fivexer/) | `pip install fivexer` |
-| Java / JVM / Android | `io.fivexer:fivexer-sdk` (Maven Central) | see [`java/README.md`](java/README.md) |
+| Java / JVM / Android | `com.fivexer:fivexer-sdk` (Maven Central) | see [`java/README.md`](java/README.md) |
 | PHP | `fivexer/sdk` (Packagist) | `composer require fivexer/sdk` |
 | TypeScript | `@fivexer/sdk` (npm) | maintained in the platform repo |
 
@@ -194,12 +194,26 @@ See the per-language READMEs for idiomatic webhook samples.
 ## Repository layout
 
 ```
-contract/   OpenAPI spec (synced from the platform repo), the operation catalogue every SDK is
-            held to, and declarative request/response cases for each operation
-python/     PyPI package `fivexer`
-java/       Maven artifact `io.fivexer:fivexer-sdk`
-php/        Packagist package `fivexer/sdk`
+contract/      OpenAPI spec (synced from the platform repo), the operation catalogue every SDK
+               is held to, and declarative request/response cases for each operation
+python/        PyPI package `fivexer`
+java/          Maven artifact `com.fivexer:fivexer-sdk`
+php/           Packagist package `fivexer/sdk`
+composer.json  the PHP package's manifest — at the root, not in php/
 ```
+
+The stray one is `composer.json`. Packagist only ever reads a repository's **root**
+`composer.json`; it has no notion of a package living in a subdirectory, so a manifest at
+`php/composer.json` is a package that cannot be published. It sits at the root and points its
+PSR-4 map at `php/src/`, with `config.vendor-dir` set to `php/vendor` so every path inside
+`php/` — `phpunit.xml`, `tests/bootstrap.php`, `bin/check-coverage.php` — is unaffected by where
+the manifest lives. Only `composer install` and `composer validate` run from the root.
+
+The same constraint decides the tag scheme. Composer rejects any tag it cannot normalise to a
+version, so `php-v0.1.0` would be skipped as an invalid version and the release would silently
+not exist: **PHP releases use unprefixed `v0.1.0` tags.** The upside of the same rule is that
+`python-v*` and `java-v*` tags are invisible to Packagist and cannot appear as versions of
+`fivexer/sdk`.
 
 Each SDK is hand-written rather than generated, and held to the `/v1` contract by
 [`contract/operations.yaml`](contract/operations.yaml) — the shared checklist every SDK's
@@ -221,11 +235,11 @@ cd java && ./gradlew check
 
 # PHP — no local PHP needed
 docker build -f php/Dockerfile.dev -t fivexer-php-dev php
-# Mount the repo root: the contract-parity test reads contract/operations.yaml
-run() { docker run --rm -v "$PWD":/repo -w /repo/php fivexer-php-dev "$@"; }
-run composer install
-run sh -c 'vendor/bin/phpunit --no-coverage --log-junit build/junit.xml && php bin/check-timings.php'
-run sh -c 'vendor/bin/phpunit && php bin/check-coverage.php'
+# Mount the repo root: composer.json lives there, and the parity test reads contract/operations.yaml
+run() { docker run --rm -v "$PWD":/repo -w /repo fivexer-php-dev "$@"; }
+run composer install          # installs to php/vendor, per config.vendor-dir
+run sh -c 'cd php && vendor/bin/phpunit --no-coverage --log-junit build/junit.xml && php bin/check-timings.php'
+run sh -c 'cd php && vendor/bin/phpunit && php bin/check-coverage.php'
 ```
 
 PHP runs its tests twice on purpose: Xdebug's branch collection adds a fixed per-test overhead

@@ -60,24 +60,71 @@ jobs:
           path: java/build/reports/jacoco/
 
   release:
-    # Publish to Maven Central Portal on tag push. Requires CENTRAL_PORTAL_* + signing secrets.
+    # Publish to Maven Central on tag push.
+    #
+    # Unlike Packagist (which reads a git repo), Central is push-based: it never sees this
+    # repository, only an uploaded bundle. That is why the Java SDK needs no special repo layout
+    # despite living in a subdirectory — and why publishing is an explicit HTTP upload rather
+    # than a `gradle publish` to a remote URL. The Central Portal has no deploy URL for
+    # releases; `maven-snapshots` accepts only -SNAPSHOT versions.
     needs: test
     if: startsWith(github.ref, 'refs/tags/java-v')
     runs-on: ubuntu-latest
     environment:
       name: maven-central
-      url: https://central.sonatype.com/artifact/io.fivexer/fivexer-sdk
+      url: https://central.sonatype.com/artifact/com.fivexer/fivexer-sdk
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
-      - name: Publish to Maven Central Portal
+
+      - name: Check the tag matches the built version
+        working-directory: java
+        run: |
+          # Nothing cross-checks the tag against build.gradle, so a java-v0.4.0 tag on a tree
+          # that still says 0.3.0 would publish 0.3.0 — or, worse, re-publish a version Central
+          # already has. Maven Central is immutable: a released coordinate can never be replaced.
+          TAG="${GITHUB_REF#refs/tags/java-v}"
+          BUILT="$(./gradlew properties --no-daemon -q | awk '$1=="version:"{print $2}')"
+          if [ "$TAG" != "$BUILT" ]; then
+            echo "::error::tag java-v$TAG does not match build.gradle version $BUILT"
+            exit 1
+          fi
+          echo "releasing $TAG"
+
+      - name: Build the signed Central bundle
+        working-directory: java
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew centralBundle --no-daemon
+
+      - name: Upload to the Central Portal Publisher API
         working-directory: java
         env:
           CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
           CENTRAL_PORTAL_TOKEN: ${{ secrets.CENTRAL_PORTAL_TOKEN }}
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-        run: ./gradlew publishToMavenLocal sign publish --no-daemon
+        run: |
+          V="${GITHUB_REF#refs/tags/java-v}"
+          BUNDLE="build/central/fivexer-sdk-${V}-bundle.zip"
+          # The signatures are the point of the whole exercise; Central rejects an unsigned
+          # bundle, but it is better to find a missing secret here than in a 400 from the API.
+          if ! unzip -l "$BUNDLE" | grep -q '\.jar\.asc$'; then
+            echo "::error::bundle is unsigned — is SIGNING_KEY set?"
+            exit 1
+          fi
+          AUTH="$(printf '%s:%s' "$CENTRAL_PORTAL_USERNAME" "$CENTRAL_PORTAL_TOKEN" | base64 -w0)"
+          # publishingType=AUTOMATIC releases once validation passes. USER_MANAGED would park the
+          # deployment in the portal waiting for someone to click, which in CI just means a
+          # release that silently never happened.
+          CODE="$(curl -sS -o response.txt -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${AUTH}" \
+            -F "bundle=@${BUNDLE}" \
+            "https://central.sonatype.com/api/v1/publisher/upload?name=fivexer-sdk-${V}&publishingType=AUTOMATIC")"
+          echo "HTTP ${CODE}"; cat response.txt; echo
+          case "$CODE" in
+            2*) echo "deployment accepted" ;;
+            *) echo "::error::Central Portal rejected the upload"; exit 1 ;;
+          esac
