@@ -5,7 +5,10 @@ plugins {
     id 'jacoco'
 }
 
-group = 'io.fivexer'
+// Maven Central verifies a namespace against the reversed domain, so the groupId is a claim
+// about a domain you control: `com.fivexer` is checked by a DNS TXT record on fivexer.com.
+// `io.fivexer` would require fivexer.io, which does not exist.
+group = 'com.fivexer'
 version = '0.3.0'
 
 java {
@@ -108,18 +111,41 @@ publishing {
         }
     }
     repositories {
+        // A local directory, not a remote URL, and that is not a workaround — the Central Portal
+        // has no deploy URL for releases. `central.sonatype.com/repository/maven-snapshots/`
+        // accepts only -SNAPSHOT versions; a release is a zip of a Maven-repository layout
+        // POSTed to the Publisher API. Staging to a directory *is* that layout, so this repo
+        // builds the bundle's contents and `centralBundle` packs them.
         maven {
-            name = 'centralPortal'
-            url = 'https://central.sonatype.com/repository/maven-snapshots/'
-            credentials {
-                username = System.getenv('CENTRAL_PORTAL_USERNAME')
-                password = System.getenv('CENTRAL_PORTAL_TOKEN')
-            }
+            name = 'centralBundle'
+            url = layout.buildDirectory.dir('central-staging')
         }
     }
 }
 
 signing {
-    useInMemoryPgpKeys(System.getenv('SIGNING_KEY'), System.getenv('SIGNING_PASSWORD'))
+    def signingKey = System.getenv('SIGNING_KEY')
+    def signingPassword = System.getenv('SIGNING_PASSWORD')
+    // Central rejects unsigned artifacts, but a laptop has no signing key and `./gradlew build`
+    // must still work. `required` resolves the tension: the signature is mandatory whenever
+    // something is being published and skipped otherwise — so CI cannot accidentally ship an
+    // unsigned jar just because a secret went missing.
+    required { signingKey != null && gradle.taskGraph.allTasks.any { it.name.startsWith('publish') } }
+    if (signingKey != null) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
     sign publishing.publications.mavenJava
+}
+
+// The artefact the Publisher API actually consumes.
+tasks.register('centralBundle', Zip) {
+    description = 'Packs the signed artifacts into a Central Portal upload bundle.'
+    group = 'publishing'
+    dependsOn tasks.named('publishMavenJavaPublicationToCentralBundleRepository')
+    from layout.buildDirectory.dir('central-staging')
+    // Central validates the bundle's file list and rejects repository-level index files, which
+    // describe a whole repo rather than one deployment. Gradle writes them for a file repo.
+    exclude '**/maven-metadata.xml*'
+    archiveFileName = "fivexer-sdk-${version}-bundle.zip"
+    destinationDirectory = layout.buildDirectory.dir('central')
 }

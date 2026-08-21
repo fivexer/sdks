@@ -4,11 +4,18 @@ on:
   push:
     paths:
       - php/**
+      # The manifest lives at the repo root because Packagist only ever reads a root
+      # composer.json — see the comment on it. A dependency bump has to trigger PHP CI, and it no
+      # longer lives under php/.
+      - composer.json
+      - composer.lock
       - contract/**
       - .github/workflows/php.yml
   pull_request:
     paths:
       - php/**
+      - composer.json
+      - composer.lock
       - contract/**
 
 jobs:
@@ -39,8 +46,10 @@ jobs:
           coverage: ${{ runner.os == 'Linux' && 'xdebug' || 'none' }}
         env:
           COMPOSER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Runs at the repo root: that is where composer.json is, and `config.vendor-dir` puts the
+      # installed packages at php/vendor anyway — so every path inside php/ (phpunit.xml,
+      # tests/bootstrap.php, bin/check-coverage.php) is unchanged by the manifest's location.
       - name: Install dependencies
-        working-directory: php
         run: composer install --prefer-dist --no-interaction --no-progress
 
       # Two runs on purpose. Xdebug's branch/path collection adds a fixed ~170ms of
@@ -92,9 +101,19 @@ jobs:
           path: php/build/coverage/
 
   release:
-    # Packagist picks the package up from the git tag; this job only guards the tag.
+    # Packagist is pull-based: it never receives an upload, it reads this repository's git tags.
+    # So there is nothing here to publish with — this job's whole purpose is to guard the tag
+    # before Packagist sees it. A tag is effectively immutable once crawled: Packagist caches a
+    # version's metadata on first sight, and deleting the tag afterwards does not reliably
+    # unpublish it.
+    #
+    # The filter is `v*`, not `php-v*`, and that is forced rather than chosen. Composer's version
+    # parser rejects a tag it cannot normalise, so `php-v0.1.0` would be skipped with "invalid
+    # version format" and the release would silently not exist. PHP therefore owns the
+    # unprefixed tag namespace in this monorepo. The same rule is why `python-v0.4.0` and
+    # `java-v*` tags are invisible to Packagist and cannot pollute this package's version list.
     needs: test
-    if: startsWith(github.ref, 'refs/tags/php-v')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -103,5 +122,22 @@ jobs:
           php-version: "8.3"
           extensions: curl, json, mbstring
       - name: Validate composer.json
-        working-directory: php
         run: composer validate --strict
+
+      - name: Check the tag agrees with the branch alias
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          case "$VERSION" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::a release tag must carry a full semver, got 'v$VERSION'"; exit 1 ;;
+          esac
+          # `extra.branch-alias.dev-main` tells Composer which line dev-main represents. Left
+          # stale it does not fail anything loudly — it just resolves dev-main to the wrong
+          # version for anyone tracking it, which is the kind of bug nobody reports.
+          ALIAS="$(php -r 'echo json_decode(file_get_contents("composer.json"), true)["extra"]["branch-alias"]["dev-main"] ?? "";')"
+          EXPECTED="${VERSION%.*}.x-dev"
+          if [ "$ALIAS" != "$EXPECTED" ]; then
+            echo "::error::tag v$VERSION expects branch-alias dev-main = $EXPECTED, found '$ALIAS'"
+            exit 1
+          fi
+          echo "releasing $VERSION (dev-main -> $ALIAS)"

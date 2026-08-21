@@ -23,3 +23,26 @@
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# What `composer require fivexer/sdk` actually downloads.
+#
+# The PHP package's manifest is this repo's root composer.json (Packagist reads no other
+# location), which means the dist archive would otherwise carry the Python, Java and tooling
+# trees to every PHP consumer. Only src/, the manifest, the licence and the README need to
+# travel; the tests stay in git — they are the specification — but nobody vendoring the SDK
+# needs them in their tree.
+/python          export-ignore
+/java            export-ignore
+/contract        export-ignore
+/scripts         export-ignore
+/.github         export-ignore
+/php/tests       export-ignore
+/php/bin         export-ignore
+/php/build       export-ignore
+/php/phpunit.xml export-ignore
+/php/Dockerfile.dev export-ignore
+/.gitattributes  export-ignore
+/.gitignore      export-ignore
+/examples/java       export-ignore
+/examples/python     export-ignore
+/examples/typescript export-ignore

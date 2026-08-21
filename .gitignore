@@ -31,3 +31,4 @@ java/build/libs/*.jar
 .DS_Store
 php/build
 php/vendor
+php/.phpunit.result.cache

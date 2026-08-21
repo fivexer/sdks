@@ -10,6 +10,11 @@
             "name": "Fivexer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/fivexer/sdks/issues",
+        "source": "https://github.com/fivexer/sdks/tree/main/php",
+        "docs": "https://5xer.com/docs"
+    },
     "require": {
         "php": ">=8.1",
         "ext-curl": "*",
@@ -23,18 +28,19 @@
     },
     "autoload": {
         "psr-4": {
-            "Fivexer\\SDK\\": "src/"
+            "Fivexer\\SDK\\": "php/src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Fivexer\\SDK\\Tests\\": "tests/"
+            "Fivexer\\SDK\\Tests\\": "php/tests/"
         }
     },
     "config": {
         "sort-packages": true,
         "optimize-autoloader": true,
-        "platform-check": true
+        "platform-check": true,
+        "vendor-dir": "php/vendor"
     },
     "extra": {
         "branch-alias": {

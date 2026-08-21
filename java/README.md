@@ -16,20 +16,24 @@ platform matches them continuously and notifies you via signed webhooks. Works o
 
 ```xml
 <dependency>
-  <groupId>io.fivexer</groupId>
+  <groupId>com.fivexer</groupId>
   <artifactId>fivexer-sdk</artifactId>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'io.fivexer:fivexer-sdk:0.1.0'
+implementation 'com.fivexer:fivexer-sdk:0.3.0'
 ```
 
-> Coordinates require the `io.fivexer` namespace to be registered on Maven Central Portal
-> before the first published release.
+> The `com.fivexer` namespace must be verified on Maven Central Portal — by a DNS TXT record on
+> `fivexer.com` — before the first release. The groupId is a claim about a domain you control,
+> which is why it is `com.fivexer` and not `io.fivexer`: the latter would require `fivexer.io`.
+>
+> The Java *package* is `io.fivexer.sdk` and stays that way; Central verifies the coordinate,
+> not the package, so imports are unaffected by the groupId.
 
 ## Quickstart
 
