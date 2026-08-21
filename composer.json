@@ -4,7 +4,7 @@
     "type": "library",
     "license": "MIT",
     "keywords": ["fivexer", "routing", "task-routing", "assignment", "taskrouter", "redis"],
-    "homepage": "https://github.com/fivexer/sdks",
+    "homepage": "https://5xer.com",
     "authors": [
         {
             "name": "Fivexer"

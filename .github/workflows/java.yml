@@ -115,7 +115,21 @@ jobs:
             echo "::error::bundle is unsigned — is SIGNING_KEY set?"
             exit 1
           fi
-          AUTH="$(printf '%s:%s' "$CENTRAL_PORTAL_USERNAME" "$CENTRAL_PORTAL_TOKEN" | base64 -w0)"
+          # Lengths only — never the values. A secret pasted with a trailing newline, or one that
+          # silently stored empty because `--body "$VAR"` was given an unset variable, is
+          # invisible in the portal and indistinguishable from a wrong password in the 401. This
+          # is the cheapest way to tell those apart on the next run.
+          echo "username length: ${#CENTRAL_PORTAL_USERNAME}, token length: ${#CENTRAL_PORTAL_TOKEN}"
+          if [ -z "$CENTRAL_PORTAL_USERNAME" ] || [ -z "$CENTRAL_PORTAL_TOKEN" ]; then
+            echo "::error::a Central Portal secret is empty"
+            exit 1
+          fi
+          # Strip whitespace before encoding. A newline caught in the paste ends up inside the
+          # base64 payload, so the server decodes a username that does not exist and answers
+          # "Invalid token" — the same message a genuinely wrong password gets.
+          U="$(printf '%s' "$CENTRAL_PORTAL_USERNAME" | tr -d '[:space:]')"
+          T="$(printf '%s' "$CENTRAL_PORTAL_TOKEN" | tr -d '[:space:]')"
+          AUTH="$(printf '%s:%s' "$U" "$T" | base64 -w0)"
           # publishingType=AUTOMATIC releases once validation passes. USER_MANAGED would park the
           # deployment in the portal waiting for someone to click, which in CI just means a
           # release that silently never happened.

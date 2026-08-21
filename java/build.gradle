@@ -92,7 +92,7 @@ publishing {
             pom {
                 name = 'Fivexer SDK'
                 description = 'Typed Java/JVM client for the Fivexer Platform /v1 routing API'
-                url = 'https://github.com/fivexer/sdks'
+                url = 'https://5xer.com'
                 licenses {
                     license {
                         name = 'MIT License'

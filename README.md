@@ -246,6 +246,90 @@ PHP runs its tests twice on purpose: Xdebug's branch collection adds a fixed per
 that measures the profiler rather than the test, so the time budget is checked on an
 uninstrumented run and the coverage gate gets its own.
 
+## Releasing
+
+Each language releases independently, from its own tag. Nothing here releases everything at once
+— there is no repo-wide version.
+
+| Package | Version lives in | Tag | Publishes by |
+|---|---|---|---|
+| `fivexer` (PyPI) | `python/pyproject.toml` → `version` | `python-v0.4.1` | OIDC trusted publishing — no token anywhere |
+| `com.fivexer:fivexer-sdk` | `java/build.gradle` → `version` | `java-v0.3.0` | Signed bundle POSTed to the Central Portal Publisher API |
+| `fivexer/sdk` (Packagist) | *nowhere* — the tag **is** the version | `v0.1.0` — **no prefix** | Packagist reads this repo's tags |
+| `@fivexer/sdk` (npm) | `packages/sdk/package.json` | — | Released from the platform repo, not here |
+
+**PHP's tag has no language prefix, and that is forced, not a style choice.** Composer rejects any
+tag it cannot normalise to a version, so `php-v0.1.0` is skipped as invalid and the release
+silently does not exist. PHP therefore owns the bare `vX.Y.Z` namespace. The same rule is what
+keeps `python-v*` and `java-v*` tags invisible to Packagist so they cannot appear as versions of
+`fivexer/sdk`.
+
+### The order matters
+
+The tag must point at a commit that already contains the version bump. A tag created before the
+commit lands checks out the *old* tree, and CI will faithfully build and publish the wrong thing.
+
+```bash
+# 1. bump the version in the file above (skip for PHP — the tag is the version)
+# 2. commit and push FIRST
+git add -A && git commit -m "chore: release python 0.4.1"
+git push origin main
+
+# 3. wait for the language's workflow to go green on main.
+#    Every release job declares `needs: test`; if the matrix fails the tag does nothing.
+gh run watch --repo fivexer/sdks
+
+# 4. only now tag, and push the tag
+git tag python-v0.4.1
+git push origin python-v0.4.1
+```
+
+### Guards that will stop you
+
+- **Java** cross-checks the tag against `build.gradle`'s `version` and fails on a mismatch.
+- **PHP** cross-checks the tag against `extra.branch-alias.dev-main` in `composer.json`, which
+  must read `<major>.<minor>.x-dev` for the version being tagged. Bump it in the same commit.
+- **Java** refuses to upload a bundle with no `.asc` signatures, so a missing `SIGNING_KEY`
+  fails locally rather than as an opaque rejection from the API.
+
+### Releases are permanent
+
+PyPI and Maven Central are immutable: `fivexer 0.4.0` and `com.fivexer:fivexer-sdk:0.3.0` can
+never be replaced, and a yanked PyPI version's number can never be reused. If a release is
+wrong, the fix is always to ship the next patch version — never to re-tag.
+
+Re-tagging is only safe **before** anything reaches a registry:
+
+```bash
+git tag -d java-v0.3.0
+git push origin --delete java-v0.3.0
+# fix, commit, push, wait for green, then tag again
+```
+
+If a release job fails on **credentials**, do not re-tag — secrets are read at run time and the
+checkout is unchanged, so fixing the secret and re-running the job is enough:
+
+```bash
+gh run rerun --repo fivexer/sdks --failed
+```
+
+Note that a re-run uses the workflow file **as it existed at the tag**, so a fix to the workflow
+itself does need a new commit and a new tag.
+
+### Release secrets
+
+Held as environment secrets on `maven-central`; only Java needs them, and Python needs none.
+
+| Secret | What it is |
+|---|---|
+| `SIGNING_KEY` | Armored PGP **private** key (`gpg --armor --export-secret-keys`) |
+| `SIGNING_PASSWORD` | The passphrase protecting that key |
+| `CENTRAL_PORTAL_USERNAME` | Token **username** from Central Portal → Account → Generate User Token |
+| `CENTRAL_PORTAL_TOKEN` | Token **password** from the same dialog — not your account password |
+
+The public half of the signing key must be published to a keyserver (`keyserver.ubuntu.com`),
+or Central cannot verify the signatures it just received.
+
 ## License
 
 MIT.

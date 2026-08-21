@@ -41,9 +41,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/fivexer/sdks"
+Homepage = "https://5xer.com"
+Documentation = "https://5xer.com/docs"
 Repository = "https://github.com/fivexer/sdks"
-Documentation = "https://github.com/fivexer/sdks#readme"
+Issues = "https://github.com/fivexer/sdks/issues"
+Changelog = "https://github.com/fivexer/sdks/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fivexer"]
