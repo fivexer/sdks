@@ -157,3 +157,54 @@ def test_a_refused_reset_is_reported_as_not_ok(server, client):
     server.set_response(json_response(200, {"ok": False}))
 
     assert client.learning.reset() is False
+
+
+def test_preview_weights_carries_the_two_widening_flags(server, client):
+    server.set_response(json_response(200, {"workers": []}))
+
+    client.learning.preview_weights("agent_1", override_manual=True, include_unexplored_tags=True)
+
+    assert query_pairs(server.last) == {
+        "workerId": "agent_1",
+        "overrideManual": "true",
+        "includeUnexploredTags": "true",
+    }
+
+
+def test_preview_weights_omits_flags_that_were_not_asked_for(server, client):
+    server.set_response(json_response(200, {"workers": []}))
+
+    client.learning.preview_weights("agent_1")
+
+    # Both default off server-side. Echoing `false` would make "I did not ask" look like a
+    # deliberate refusal, and the preview would stop matching what a bare apply() writes.
+    assert query_pairs(server.last) == {"workerId": "agent_1"}
+
+
+def test_preview_can_send_a_flag_off_explicitly(server, client):
+    server.set_response(json_response(200, {"workers": []}))
+
+    client.learning.preview_weights(override_manual=False)
+
+    assert query_pairs(server.last) == {"overrideManual": "false"}
+
+
+def test_apply_weights_sends_the_flags_in_the_body(server, client):
+    server.set_response(json_response(200, {"applied": {"agent_1": {"billing": 0.0}}}))
+
+    applied = client.learning.apply_weights(["agent_1"], override_manual=True, include_unexplored_tags=False)
+
+    assert read_body(server.last) == {
+        "workerIds": ["agent_1"],
+        "overrideManual": True,
+        "includeUnexploredTags": False,
+    }
+    assert applied == {"agent_1": {"billing": 0.0}}
+
+
+def test_apply_weights_without_flags_sends_only_the_worker_ids(server, client):
+    server.set_response(json_response(200, {"applied": {}}))
+
+    client.learning.apply_weights(["agent_1"])
+
+    assert read_body(server.last) == {"workerIds": ["agent_1"]}

@@ -36,6 +36,20 @@ final class Task
         public readonly ?bool $requireGeo = null,
         /** @var list<string>|null */
         public readonly ?array $allowedCidrs = null,
+        /**
+         * The hard skill gate this task was created with, in tag->weight form. Without it a
+         * readiness check on an existing task silently ignores its own gate and reads too
+         * optimistic.
+         *
+         * @var array<string, float>|null
+         */
+        public readonly ?array $skillThresholds = null,
+        /** The policies in force on this task, as stored — resolved workspace defaults included */
+        public readonly ?EscalationPolicy $escalation = null,
+        /** How far up the escalation ladder this task has already climbed */
+        public readonly ?int $escalationLevel = null,
+        public readonly ?SlaPolicy $sla = null,
+        public readonly ?SchedulePolicy $schedule = null,
         /** Set on workflow-step tasks */
         public readonly ?string $workflowRunId = null,
         public readonly ?string $workflowStepId = null,
@@ -66,6 +80,17 @@ final class Task
             maxDistanceKm: isset($data['maxDistanceKm']) ? (float) $data['maxDistanceKm'] : null,
             requireGeo: isset($data['requireGeo']) ? (bool) $data['requireGeo'] : null,
             allowedCidrs: isset($data['allowedCidrs']) ? \array_map('strval', $data['allowedCidrs']) : null,
+            skillThresholds: isset($data['skillThresholds']) && \is_array($data['skillThresholds'])
+                ? \array_map('floatval', $data['skillThresholds'])
+                : null,
+            escalation: isset($data['escalation']) && \is_array($data['escalation'])
+                ? EscalationPolicy::fromArray($data['escalation'])
+                : null,
+            escalationLevel: isset($data['escalationLevel']) ? (int) $data['escalationLevel'] : null,
+            sla: isset($data['sla']) && \is_array($data['sla']) ? SlaPolicy::fromArray($data['sla']) : null,
+            schedule: isset($data['schedule']) && \is_array($data['schedule'])
+                ? SchedulePolicy::fromArray($data['schedule'])
+                : null,
             workflowRunId: isset($data['workflowRunId']) ? (string) $data['workflowRunId'] : null,
             workflowStepId: isset($data['workflowStepId']) ? (string) $data['workflowStepId'] : null,
             data: isset($data['data']) ? TaskDataSummary::fromArray($data['data']) : null,

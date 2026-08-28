@@ -29,14 +29,19 @@ from .client import (
     _is_retryable_status,
     _parse_error_body,
     _retry_after_seconds,
+    _size_of,
+    _upload_failed,
 )
 from .errors import FivexerApiError
 from .models import (
     AcceptWorkerInvite,
     AcceptWorkerInviteResult,
+    Attachment,
+    AttachmentDownload,
     ChangePin,
     Comment,
     CommentPage,
+    CreatedAttachment,
     JoinWorkspace,
     JoinWorkspaceResult,
     PushConfig,
@@ -45,10 +50,12 @@ from .models import (
     Skill,
     TaskAction,
     TeamPresence,
+    VoiceIceServers,
     WorkerAvailabilityState,
     WorkerBreakEnded,
     WorkerBreakStarted,
     WorkerBreakToday,
+    WorkerCreateAttachment,
     WorkerDevice,
     WorkerDeviceInput,
     WorkerLocation,
@@ -62,6 +69,7 @@ from .models import (
     WorkerSkillLevel,
     WorkerSkillSet,
     WorkerTaskDetail,
+    WorkerTimeEntriesResult,
     _each,
 )
 
@@ -129,6 +137,7 @@ class FivexerWorker:
         self._max_retries = max_retries
         self._owns_client = http_client is None
         self._client = http_client or httpx.Client(timeout=timeout)
+        self.attachments = _WorkerAttachments(self)
 
     @property
     def base_url(self) -> str:
@@ -182,15 +191,11 @@ class FivexerWorker:
         return WorkerTaskDetail.from_json(self._send(specs.worker_task_detail(task_id)))
 
     def accept(self, task_id: str, worker_id: str | None = None) -> TaskAction:
-        return TaskAction.from_json(
-            self._send(specs.worker_task_action(task_id, "accept", self._require(worker_id)))
-        )
+        return TaskAction.from_json(self._send(specs.worker_task_action(task_id, "accept", self._require(worker_id))))
 
     def reject(self, task_id: str, worker_id: str | None = None) -> TaskAction:
         """Reject a task — it requeues for other eligible workers."""
-        return TaskAction.from_json(
-            self._send(specs.worker_task_action(task_id, "reject", self._require(worker_id)))
-        )
+        return TaskAction.from_json(self._send(specs.worker_task_action(task_id, "reject", self._require(worker_id))))
 
     def complete(
         self,
@@ -198,9 +203,7 @@ class FivexerWorker:
         result: Mapping[str, Any] | None = None,
         worker_id: str | None = None,
     ) -> TaskAction:
-        return TaskAction.from_json(
-            self._send(specs.worker_complete(task_id, self._require(worker_id), result))
-        )
+        return TaskAction.from_json(self._send(specs.worker_complete(task_id, self._require(worker_id), result)))
 
     # -- breaks, metrics, presence --
     def start_break(self, reason: str | None = None) -> WorkerBreakStarted:
@@ -217,6 +220,14 @@ class FivexerWorker:
 
     def metrics_today(self) -> WorkerMetricsToday:
         return WorkerMetricsToday.from_json(self._send(specs.worker_metrics_today()))
+
+    def time_entries(self) -> WorkerTimeEntriesResult:
+        """This worker's own recorded shifts and breaks for the last 7 days.
+
+        The same record an operator reads through ``workers.time_entries``. That
+        parity is deliberate: it is what keeps the log a timesheet rather than
+        surveillance."""
+        return WorkerTimeEntriesResult.from_json(self._send(specs.worker_time_entries()))
 
     def team_presence(self) -> TeamPresence:
         """Read-only team presence — visible to every worker in the workspace."""
@@ -263,12 +274,17 @@ class FivexerWorker:
         team endpoints 501 (``on_break`` is simply always false there)."""
         return WorkerMe.from_json(self._send(specs.worker_me()))
 
-    def set_availability(self, available: bool) -> WorkerAvailabilityState:
+    def set_availability(self, available: bool, stale_after_ms: int | None = None) -> WorkerAvailabilityState:
         """Go on or off shift — the worker's own switch. Workers are created off shift, so this is
         what makes someone matchable in the first place. Off shift keeps the existing backlog;
         going available also ends an open break. Raises 403 ``approval_pending`` while an operator
-        still has to admit a QR-join worker."""
-        return WorkerAvailabilityState.from_json(self._send(specs.worker_set_availability(available)))
+        still has to admit a QR-join worker.
+
+        ``stale_after_ms`` (60_000–86_400_000) is a liveness contract for **unattended** workers
+        only: the platform clocks this worker out and pauses routing after that much silence,
+        which is what stops a crashed process reading as available forever. An interactive client
+        must never send it — a person working away from their phone is not a crashed process."""
+        return WorkerAvailabilityState.from_json(self._send(specs.worker_set_availability(available, stale_after_ms)))
 
     def change_pin(self, change: ChangePin) -> None:
         """A wrong ``current_pin`` is a 400 (``invalid_current_pin``); the session stays valid
@@ -319,6 +335,17 @@ class FivexerWorker:
     def push_subscribe(self, subscription: PushSubscriptionInput) -> PushSubscription:
         return PushSubscription.from_json(self._send(specs.worker_push_subscribe(subscription)))
 
+    def voice_ice(self) -> VoiceIceServers:
+        """**Experimental — voice is not production-ready.** May change or be withdrawn in a
+        patch release; do not build on it yet.
+
+        STUN/TURN servers for a call this worker is about to join. Fetched per call rather than
+        cached: a TURN credential is short-lived, and a stale one fails at the point where the
+        call is already ringing. Raises ``voice_disabled`` (404) on a workspace with voice
+        switched off — a configuration fact, not an empty relay list to proceed on.
+        """
+        return VoiceIceServers.from_json(self._send(specs.worker_voice_ice()))
+
     def push_unsubscribe(self, endpoint: str) -> None:
         self._send(specs.worker_push_unsubscribe(endpoint))
 
@@ -328,6 +355,14 @@ class FivexerWorker:
         if not resolved:
             raise _worker_id_required()
         return resolved
+
+    def _put_bytes(self, upload_url: str, method: str, headers: Mapping[str, str], payload: bytes) -> None:
+        """Send attachment bytes straight to object storage. Not a /v1 call — no auth, no retry:
+        the presigned URL carries its own authorisation, and sending the session token to a
+        third-party storage host would leak it."""
+        response = self._client.request(method, upload_url, headers=dict(headers), content=payload)
+        if response.status_code >= 400:
+            raise _upload_failed(response.status_code)
 
     def _send(self, spec: RequestSpec) -> Any:
         url = f"{self._base}/v1{spec.path}"
@@ -379,6 +414,7 @@ class AsyncFivexerWorker:
         self._max_retries = max_retries
         self._owns_client = http_client is None
         self._client = http_client or httpx.AsyncClient(timeout=timeout)
+        self.attachments = _AsyncWorkerAttachments(self)
 
     @property
     def base_url(self) -> str:
@@ -439,9 +475,7 @@ class AsyncFivexerWorker:
         result: Mapping[str, Any] | None = None,
         worker_id: str | None = None,
     ) -> TaskAction:
-        return TaskAction.from_json(
-            await self._send(specs.worker_complete(task_id, self._require(worker_id), result))
-        )
+        return TaskAction.from_json(await self._send(specs.worker_complete(task_id, self._require(worker_id), result)))
 
     async def start_break(self, reason: str | None = None) -> WorkerBreakStarted:
         return WorkerBreakStarted.from_json(await self._send(specs.worker_start_break(reason)))
@@ -455,6 +489,9 @@ class AsyncFivexerWorker:
 
     async def metrics_today(self) -> WorkerMetricsToday:
         return WorkerMetricsToday.from_json(await self._send(specs.worker_metrics_today()))
+
+    async def time_entries(self) -> WorkerTimeEntriesResult:
+        return WorkerTimeEntriesResult.from_json(await self._send(specs.worker_time_entries()))
 
     async def team_presence(self) -> TeamPresence:
         return TeamPresence.from_json(await self._send(specs.worker_team_presence()))
@@ -478,9 +515,7 @@ class AsyncFivexerWorker:
         return result
 
     async def accept_invite(self, invite: AcceptWorkerInvite) -> AcceptWorkerInviteResult:
-        result = AcceptWorkerInviteResult.from_json(
-            await self._send(specs.worker_accept_invite(invite))
-        )
+        result = AcceptWorkerInviteResult.from_json(await self._send(specs.worker_accept_invite(invite)))
         self._token = result.token
         self._worker_id = result.worker_id
         return result
@@ -488,9 +523,9 @@ class AsyncFivexerWorker:
     async def me(self) -> WorkerMe:
         return WorkerMe.from_json(await self._send(specs.worker_me()))
 
-    async def set_availability(self, available: bool) -> WorkerAvailabilityState:
+    async def set_availability(self, available: bool, stale_after_ms: int | None = None) -> WorkerAvailabilityState:
         return WorkerAvailabilityState.from_json(
-            await self._send(specs.worker_set_availability(available))
+            await self._send(specs.worker_set_availability(available, stale_after_ms))
         )
 
     async def change_pin(self, change: ChangePin) -> None:
@@ -502,25 +537,17 @@ class AsyncFivexerWorker:
     async def set_skills(self, skills: list[WorkerSkillLevel]) -> WorkerSkillSet:
         return WorkerSkillSet.from_json(await self._send(specs.worker_set_skills(skills)))
 
-    async def comments(
-        self, task_id: str, cursor: str | None = None, limit: int | None = None
-    ) -> CommentPage:
-        return CommentPage.from_json(
-            await self._send(specs.worker_comments_list(task_id, cursor, limit))
-        )
+    async def comments(self, task_id: str, cursor: str | None = None, limit: int | None = None) -> CommentPage:
+        return CommentPage.from_json(await self._send(specs.worker_comments_list(task_id, cursor, limit)))
 
     async def add_comment(self, task_id: str, body: str) -> Comment:
-        return Comment.from_json(
-            (await self._send(specs.worker_comments_add(task_id, body)))["comment"]
-        )
+        return Comment.from_json((await self._send(specs.worker_comments_add(task_id, body)))["comment"])
 
     async def metrics_window(self, window: str = "7d") -> WorkerMetricsWindow:
         return WorkerMetricsWindow.from_json(await self._send(specs.worker_metrics_window(window)))
 
     async def update_location(self, location: WorkerLocation) -> WorkerLocationResult:
-        return WorkerLocationResult.from_json(
-            await self._send(specs.worker_update_location(location))
-        )
+        return WorkerLocationResult.from_json(await self._send(specs.worker_update_location(location)))
 
     async def register_device(self, device: WorkerDeviceInput) -> WorkerDevice:
         return WorkerDevice.from_json(await self._send(specs.worker_device_register(device)))
@@ -532,9 +559,11 @@ class AsyncFivexerWorker:
         return PushConfig.from_json(await self._send(specs.worker_push_config()))
 
     async def push_subscribe(self, subscription: PushSubscriptionInput) -> PushSubscription:
-        return PushSubscription.from_json(
-            await self._send(specs.worker_push_subscribe(subscription))
-        )
+        return PushSubscription.from_json(await self._send(specs.worker_push_subscribe(subscription)))
+
+    async def voice_ice(self) -> VoiceIceServers:
+        """**Experimental — voice is not production-ready.** See :meth:`FivexerWorker.voice_ice`."""
+        return VoiceIceServers.from_json(await self._send(specs.worker_voice_ice()))
 
     async def push_unsubscribe(self, endpoint: str) -> None:
         await self._send(specs.worker_push_unsubscribe(endpoint))
@@ -545,6 +574,12 @@ class AsyncFivexerWorker:
         if not resolved:
             raise _worker_id_required()
         return resolved
+
+    async def _put_bytes(self, upload_url: str, method: str, headers: Mapping[str, str], payload: bytes) -> None:
+        """Async twin of :meth:`FivexerWorker._put_bytes`."""
+        response = await self._client.request(method, upload_url, headers=dict(headers), content=payload)
+        if response.status_code >= 400:
+            raise _upload_failed(response.status_code)
 
     async def _send(self, spec: RequestSpec) -> Any:
         url = f"{self._base}/v1{spec.path}"
@@ -573,3 +608,82 @@ class AsyncFivexerWorker:
             if response.status_code == 204:
                 return None
             return response.json()
+
+
+class _WorkerAttachments:
+    """Files on the worker's own tasks — how an unattended agent hands over a deliverable as a
+    file instead of a chunked comment thread.
+
+    The same storage core as the workspace client's ``tasks.attachments``: bytes go straight to
+    object storage via a presigned PUT, and ``confirm`` is what makes them readable. Two
+    differences, both deliberate: the uploader is derived from the session, so there is no
+    ``worker_id`` input; and there is no ``remove`` — files on a task are an operator's to
+    manage and a worker's only to add and read.
+
+    Deployments without object storage answer 501 ``storage_unavailable``.
+    """
+
+    def __init__(self, client: FivexerWorker) -> None:
+        self._c = client
+
+    def create(self, task_id: str, attachment: WorkerCreateAttachment) -> CreatedAttachment:
+        """Reserve the record and get a presigned URL to PUT the bytes to."""
+        return CreatedAttachment.from_json(self._c._send(specs.worker_attachments_create(task_id, attachment)))
+
+    def confirm(self, task_id: str, attachment_id: str) -> Attachment:
+        """Confirm the bytes landed — the server HEADs the object as the authoritative size check."""
+        return Attachment.from_json(
+            self._c._send(specs.worker_attachments_confirm(task_id, attachment_id))["attachment"]
+        )
+
+    def list(self, task_id: str) -> list[Attachment]:
+        return _each(self._c._send(specs.worker_attachments_list(task_id)), "attachments", Attachment.from_json)
+
+    def download(self, task_id: str, attachment_id: str) -> AttachmentDownload:
+        """A short-lived presigned download URL for a confirmed attachment."""
+        return AttachmentDownload.from_json(self._c._send(specs.worker_attachments_download(task_id, attachment_id)))
+
+    def upload(self, task_id: str, payload: bytes, filename: str, content_type: str) -> Attachment:
+        """Create → PUT the bytes to object storage → confirm, in one call.
+
+        The size is derived from ``payload``, and ``upload.headers`` are sent verbatim because
+        they are part of the presigned signature. A non-2xx from storage raises
+        :class:`FivexerApiError` with code ``upload_failed``.
+        """
+        created = self.create(
+            task_id,
+            WorkerCreateAttachment(filename=filename, content_type=content_type, size_bytes=_size_of(payload)),
+        )
+        self._c._put_bytes(created.upload.url, created.upload.method, created.upload.headers, bytes(payload))
+        return self.confirm(task_id, created.attachment.id)
+
+
+class _AsyncWorkerAttachments:
+    """Async twin of :class:`_WorkerAttachments`."""
+
+    def __init__(self, client: AsyncFivexerWorker) -> None:
+        self._c = client
+
+    async def create(self, task_id: str, attachment: WorkerCreateAttachment) -> CreatedAttachment:
+        result = await self._c._send(specs.worker_attachments_create(task_id, attachment))
+        return CreatedAttachment.from_json(result)
+
+    async def confirm(self, task_id: str, attachment_id: str) -> Attachment:
+        result = await self._c._send(specs.worker_attachments_confirm(task_id, attachment_id))
+        return Attachment.from_json(result["attachment"])
+
+    async def list(self, task_id: str) -> list[Attachment]:
+        result = await self._c._send(specs.worker_attachments_list(task_id))
+        return _each(result, "attachments", Attachment.from_json)
+
+    async def download(self, task_id: str, attachment_id: str) -> AttachmentDownload:
+        result = await self._c._send(specs.worker_attachments_download(task_id, attachment_id))
+        return AttachmentDownload.from_json(result)
+
+    async def upload(self, task_id: str, payload: bytes, filename: str, content_type: str) -> Attachment:
+        created = await self.create(
+            task_id,
+            WorkerCreateAttachment(filename=filename, content_type=content_type, size_bytes=_size_of(payload)),
+        )
+        await self._c._put_bytes(created.upload.url, created.upload.method, created.upload.headers, bytes(payload))
+        return await self.confirm(task_id, created.attachment.id)

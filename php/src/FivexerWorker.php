@@ -8,7 +8,9 @@ use Fivexer\SDK\Exception\FivexerApiException;
 use Fivexer\SDK\Exception\FivexerException;
 use Fivexer\SDK\Internal\Json;
 use Fivexer\SDK\Internal\SessionTransport;
+use Fivexer\SDK\Resource\WorkerAttachments;
 use Fivexer\SDK\Model\AcceptWorkerInvite;
+use Fivexer\SDK\Model\AttachmentUpload;
 use Fivexer\SDK\Model\AcceptWorkerInviteResult;
 use Fivexer\SDK\Model\ChangePin;
 use Fivexer\SDK\Model\Comment;
@@ -21,6 +23,7 @@ use Fivexer\SDK\Model\PushSubscriptionInput;
 use Fivexer\SDK\Model\Skill;
 use Fivexer\SDK\Model\TaskAction;
 use Fivexer\SDK\Model\TeamPresence;
+use Fivexer\SDK\Model\VoiceIceServers;
 use Fivexer\SDK\Model\WorkerAvailabilityState;
 use Fivexer\SDK\Model\WorkerBreakEnded;
 use Fivexer\SDK\Model\WorkerBreakStarted;
@@ -38,6 +41,7 @@ use Fivexer\SDK\Model\WorkerSessionToken;
 use Fivexer\SDK\Model\WorkerSkillLevel;
 use Fivexer\SDK\Model\WorkerSkillSet;
 use Fivexer\SDK\Model\WorkerTaskDetail;
+use Fivexer\SDK\Model\WorkerTimeEntriesResult;
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\GuzzleException;
@@ -72,6 +76,7 @@ final class FivexerWorker
     private readonly string $baseUrl;
     private readonly ClientInterface $httpClient;
     private readonly int $maxRetries;
+    private readonly WorkerAttachments $attachmentsResource;
 
     private ?string $token;
     private ?string $workerId;
@@ -91,6 +96,7 @@ final class FivexerWorker
         $this->workerId = $workerId;
         $this->maxRetries = $maxRetries;
         $this->httpClient = $httpClient ?? new Client(['timeout' => self::DEFAULT_TIMEOUT_SECONDS]);
+        $this->attachmentsResource = new WorkerAttachments($this);
     }
 
     public function getBaseUrl(): string
@@ -226,6 +232,18 @@ final class FivexerWorker
         return WorkerMetricsToday::fromArray($this->request('GET', '/portal/metrics/today') ?? []);
     }
 
+    /**
+     * This worker's own recorded time log — shifts and the breaks inside them, for the last 7
+     * days, with no parameters to narrow it.
+     *
+     * The same record an operator reads through `workers()->timeEntries()`. That parity is
+     * deliberate: it is what keeps the log a timesheet rather than surveillance.
+     */
+    public function timeEntries(): WorkerTimeEntriesResult
+    {
+        return WorkerTimeEntriesResult::fromArray($this->request('GET', '/portal/me/time-entries') ?? []);
+    }
+
     /** Read-only team presence — visible to every worker in the workspace. */
     public function teamPresence(): TeamPresence
     {
@@ -312,11 +330,22 @@ final class FivexerWorker
      * what makes someone matchable in the first place. Off shift keeps the existing backlog;
      * going available also ends an open break. Throws 403 `approval_pending` while an operator
      * still has to admit a QR-join worker.
+     *
+     * @param int|null $staleAfterMs A liveness contract for an **unattended** worker only
+     *     (60_000–86_400_000 ms): it authorises the platform to close the shift and pause routing
+     *     after that much silence, which is what stops a crashed daemon reading as available
+     *     forever, and shows up in the time log as `endReason: 'timeout'`. An interactive client
+     *     must never send it — a person working away from their phone is not a crashed process.
+     *     Only meaningful alongside `available: true`, so it is sent only then.
      */
-    public function setAvailability(bool $available): WorkerAvailabilityState
+    public function setAvailability(bool $available, ?int $staleAfterMs = null): WorkerAvailabilityState
     {
+        $body = ['available' => $available];
+        if ($available && $staleAfterMs !== null) {
+            $body['staleAfterMs'] = $staleAfterMs;
+        }
         return WorkerAvailabilityState::fromArray(
-            $this->request('POST', '/portal/me/availability', ['available' => $available]) ?? []
+            $this->request('POST', '/portal/me/availability', $body) ?? []
         );
     }
 
@@ -412,6 +441,27 @@ final class FivexerWorker
      * Read this before prompting for notification permission: `enabled: false` means the
      * deployment has no VAPID keypair, and a browser only gives you one prompt.
      */
+    /**
+     * **Experimental — voice is not production-ready.** This surface may change or be withdrawn
+     * in a patch release; do not build on it yet.
+     *
+     * STUN/TURN servers for a call this worker is about to join. Fetched per call rather than
+     * cached: a TURN credential is short-lived, and a stale one fails at the point where the
+     * call is already ringing. Throws a FivexerApiException with code `voice_disabled` (404) on
+     * a workspace with voice switched off — a configuration fact, not an empty relay list to
+     * proceed on.
+     */
+    public function voiceIce(): VoiceIceServers
+    {
+        return VoiceIceServers::fromArray($this->request('GET', '/portal/voice/ice') ?? []);
+    }
+
+    /** Files on this worker's own tasks. */
+    public function attachments(): WorkerAttachments
+    {
+        return $this->attachmentsResource;
+    }
+
     public function pushConfig(): PushConfig
     {
         return PushConfig::fromArray($this->request('GET', '/portal/push/config') ?? []);
@@ -459,6 +509,46 @@ final class FivexerWorker
      *     until the self-service surface arrived, so this parameter is newer than the helper.
      * @return array<string, mixed>|null
      */
+    /**
+     * The portal transport, reachable by the sibling resource classes in this namespace so they
+     * share one client, one session token and one retry policy rather than growing a second
+     * path of their own.
+     *
+     * @param array<string, mixed>|null $body
+     * @param array<string, mixed>|null $query
+     * @return array<string, mixed>|null
+     * @internal
+     */
+    public function portalRequest(string $method, string $path, ?array $body = null, ?array $query = null): ?array
+    {
+        return $this->request($method, $path, $body, $query);
+    }
+
+    /**
+     * PUT attachment bytes straight to object storage. Not a /v1 call: no session token, no
+     * retry. The presigned URL carries its own authorisation, and sending the worker's token to
+     * a third-party storage host would leak it.
+     *
+     * @internal Used by the attachments upload helper.
+     */
+    public function putBytes(AttachmentUpload $upload, string $payload): void
+    {
+        try {
+            $response = $this->httpClient->request($upload->method, $upload->url, [
+                RequestOptions::HEADERS => $upload->headers,
+                RequestOptions::BODY => $payload,
+                RequestOptions::HTTP_ERRORS => false,
+            ]);
+        } catch (GuzzleException $e) {
+            throw new FivexerException('attachment upload failed: ' . $e->getMessage(), 0, $e);
+        }
+
+        $status = $response->getStatusCode();
+        if ($status >= 400) {
+            throw new FivexerApiException($status, 'upload_failed', 'storage upload failed with http ' . $status);
+        }
+    }
+
     private function request(string $method, string $path, ?array $body = null, ?array $query = null): ?array
     {
         $url = $this->baseUrl . '/v1' . $path;

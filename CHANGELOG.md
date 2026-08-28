@@ -5,9 +5,107 @@ language. The `/v1` API contract version each release targets is noted when rele
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [Unreleased] — task policies, recurring templates, worker attachments
+
+Targets `/v1` as of 2026-08-28. Python `0.6.0`, Java `0.4.0`, PHP `dev-main`,
+TypeScript `@fivexer/sdk` `0.28.0`.
 
 ### Added
+- **The four task policies, in Python, Java and PHP.** `tasks.create` accepted `escalation`,
+  `sla`, `schedule` and `recurrence` on the wire and in the TypeScript SDK; the other three
+  dropped all four silently, along with `requiredSkills`, `teamId` and `preferTeamId`. A caller
+  could set a response deadline in TypeScript and watch the same code in Python create a task
+  with none. New models: `EscalationPolicy`, `SlaPolicy`, `SchedulePolicy`, `RecurrencePolicy`.
+- **Absent versus null is now expressible.** Omitting a policy inherits the workspace default;
+  an explicit null opts the task out of it. Every SDK prunes nulls from a request body, which is
+  right for every other field and wrong for exactly these two — so each language grew a way to
+  say "send null": `NULL_POLICY` in Python, `escalationNone()` / `slaNone()` in Java and PHP.
+- **Recurring templates** (`tasks.recurring.list` / `.remove`) across all four SDKs, with the
+  `RecurringTask` model and its clock (`nextAt`, `occurrences`). A template is created through
+  `tasks.create` with a `recurrence` and is never itself matchable — it appears in neither
+  `tasks.list` nor the queue stats, so this collection is the only view of standing work.
+  `remove(id, dropScheduled)` decides the fate of occurrences already cut.
+- **Worker-plane attachments** (`worker.attachments.create` / `.confirm` / `.list` /
+  `.download`, plus the `upload` helper) in Python, Java and PHP — how an unattended agent hands
+  over a deliverable as a file rather than a chunked comment thread. Two deliberate differences
+  from the workspace plane: the uploader comes from the session, so `WorkerCreateAttachment` has
+  no `workerId` to spoof, and there is no `remove` — a worker who could delete files could erase
+  the evidence of their own work.
+- **Voice ICE on both session planes** (`worker.voiceIce`, `supervisor.voiceIce`) in all four
+  SDKs, including the reference TypeScript one, which was also missing them. **Experimental —
+  voice is not production-ready**, and every model, method and catalogue entry says so. Fetched
+  per call rather than cached (a TURN credential is short-lived, and a stale one fails once the
+  call is already ringing); `voice_disabled` surfaces as a 404, never as an empty relay list,
+  because "no voice on this workspace" and "no relay configured, go direct" are different
+  outcomes and only one of them should let a call proceed.
+- Response fields the three SDKs were dropping: `Task.skillThresholds` / `.escalation` /
+  `.escalationLevel` / `.sla` / `.schedule` (the answer to "why is this task still queued?" and
+  "where is it on the ladder?"); `WorkerDetail.learnedRoutingWeights` /
+  `.routingWeightsSnapshot` / `.learnedRoutingWeightsSyncedAt` / `.teams` / `.invitePending` /
+  `.pendingApproval`; `WorkerLoad.invitePending` / `.pendingApproval`;
+  `WorkerSessionToken.expiresAt`. The three weight maps stay separate because collapsing them
+  would make "an operator vetoed this tag" indistinguishable from "the model did".
+- `UpsertWorker` gained `teamIds` (wholesale replacement; `[]` clears) and `available` (the
+  escape hatch for programmatic fleets — without it a newly created agent worker is off shift
+  and never matched).
+- `learning.previewWeights` / `applyWeights` gained `overrideManual` and
+  `includeUnexploredTags`. Both were live on the platform and reachable from TypeScript only.
+  A flag left unset stays off the wire, so "I did not ask" remains distinguishable from a
+  deliberate `false` — and a preview taken with different flags than the apply would be a
+  preview of a different write.
+- `contract/operations.yaml` gained the eight operations it had never claimed: the two recurring
+  ones, four worker-plane attachment ones, and voice ICE on each session plane. The catalogue
+  now accounts for every `/v1` operation in the spec — 150 implemented, 2 excluded, 0 unclaimed.
+- **`scripts/check-field-parity.py`**, and a `contract-sync` job that runs it. The operation
+  catalogue grades whether an endpoint has a method behind it and cannot see inside a body,
+  which is exactly where this drift hid — `tasks.create` existed in all four SDKs for months
+  while three of them dropped seven fields of its input, with every parity test green. The new
+  gate walks the reference SDK's types and checks each field against Python, Java and PHP; a
+  reference type with no counterpart must be classified as an alias, as method arguments, or as
+  console-plane-only, *with a reason*, or the run fails.
+
+### Changed
+- **The Python SDK is now formatted, and the formatting is gated.** `ruff format --check` had
+  never run anywhere, and 27 of 37 files had drifted — every one of them wrapped for a narrower
+  line than `pyproject.toml`'s `line-length = 120`. The reformat is cosmetic (the suite reports
+  the same 3394 statements, the same 8 misses and the same 99.55% coverage before and after),
+  but it touches most of the package, so it lands as its own reviewable change. `ruff format
+  --check src tests` is now a step in the `python` workflow beside `ruff check`, so the drift
+  cannot silently return. Java and PHP have no formatter configured, so there is no equivalent
+  gap to close there.
+
+### Notes
+- Voice remains **experimental** and is marked as such in every SDK's docs and in the operation
+  catalogue. It is not production-ready; the surface may change or be withdrawn in a patch
+  release.
+- `LearningConfig.autoWeightsOptions` and `syncIntervalMs` are deliberately absent from the
+  three hand-written SDKs. `GET /v1/learning/status` does not send them — they are console
+  write-side settings on a TypeScript-only plane — so mirroring them would model a response
+  nobody receives. Recorded in the new gate's `CONSOLE_PLANE_ONLY` table rather than left to be
+  rediscovered.
+
+## [Unreleased] — recorded working time
+
+### Added
+- **Recorded working time and per-worker analytics.** The platform now keeps a durable shift log
+  beside the matcher's live availability state, so worked time — shift time minus overlapping
+  breaks, since breaks are time *inside* a shift — is answerable historically rather than only
+  for today. New operations across the ports: `workers.metrics` (one worker's today plus a rolling
+  window), `workers.timeEntries` and the worker plane's own `worker.timeEntries` (the recorded
+  shift/break log — the working-time record EU employers must keep, CJEU C-55/18), and
+  `history.workerTimeseries` (one worker's buckets, where worked time and lifecycle counters ride
+  only on `bucket=day` because both are day-grained).
+- `history.workers` rows widened: `p50HandleMs`/`p95HandleMs`, the response counters
+  (`offered`/`accepted`/`rejected`/`failed`/`expired`/`released` and `acceptanceRate`), worked
+  time (`onShiftMs`/`breakMs`/`workingMs`/`shiftCount`) and `utilization`. The row set is now the
+  union of archive, counters and shift log, so a worker who was on shift and finished nothing
+  appears with zeros rather than going missing. `history.workers` and `team.presence` take
+  `teamId`; `breaks.metrics` takes `teamId` and `workerId`.
+- `worker.setAvailability` accepts `staleAfterMs` — a liveness contract for **unattended** workers
+  only. It authorises the platform to clock the worker out after that much silence, which is what
+  stops a crashed agent process reading as available forever. Interactive clients must never send
+  it: a person working away from their phone is not a crashed process.
+- `worker.metricsToday` gained `onShiftMs`/`shiftCount` (additive; absent on older servers).
 - Top-level `sdks/README.md` now includes PHP, links to 5xer.com/docs, and documents the two
   credential planes.
 - `php/README.md` with install, quickstart, error handling, webhooks, and beta status.

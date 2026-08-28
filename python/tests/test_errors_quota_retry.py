@@ -144,8 +144,9 @@ def test_retry_respects_retry_after_with_no_sleep_when_zero(server):
     def handler(request: httpx.Request) -> httpx.Response:
         calls["n"] += 1
         if calls["n"] == 1:
-            return json_response(429, {"error": {"code": "rate_limited", "message": "slow down"}},
-                                 headers={"retry-after": "0"})
+            return json_response(
+                429, {"error": {"code": "rate_limited", "message": "slow down"}}, headers={"retry-after": "0"}
+            )
         return json_response(202, {"id": "task_1", "status": "queued"})
 
     from fivexer import CreateTask

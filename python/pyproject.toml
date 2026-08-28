@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fivexer"
-version = "0.4.0"
+version = "0.6.0"
 description = "Typed Python client for the Fivexer Platform /v1 routing API"
 readme = "README.md"
 requires-python = ">=3.9"

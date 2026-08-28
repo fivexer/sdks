@@ -10,7 +10,9 @@ use Fivexer\SDK\Model\UpsertWorker;
 use Fivexer\SDK\Model\WorkerAvailability;
 use Fivexer\SDK\Model\WorkerDetail;
 use Fivexer\SDK\Model\WorkerList;
+use Fivexer\SDK\Model\WorkerMetrics;
 use Fivexer\SDK\Model\WorkerQueue;
+use Fivexer\SDK\Model\WorkerTimeEntriesResult;
 
 /**
  * Worker management resource. Delegates to Fivexer::request() so all transport
@@ -40,6 +42,49 @@ final class Workers
     {
         return WorkerQueue::fromArray(
             $this->client->request('GET', '/workers/' . \rawurlencode($workerId) . '/queue') ?? [],
+        );
+    }
+
+    /**
+     * The operator-plane mirror of the worker's own portal metrics: today plus a rolling window.
+     * Worked time comes from the shift log — shift time minus overlapping breaks — so both planes
+     * report the same figure. Requires the control plane.
+     *
+     * @param string|null $window rolling window such as '7d' (the default) up to '30d', or null
+     */
+    public function metrics(string $workerId, ?string $window = null): WorkerMetrics
+    {
+        return WorkerMetrics::fromArray(
+            $this->client->request(
+                'GET',
+                '/workers/' . \rawurlencode($workerId) . '/metrics',
+                null,
+                ['window' => $window],
+            ) ?? []
+        );
+    }
+
+    /**
+     * The recorded shift and break log for a window (default: the last 7 days) — the working-time
+     * record an EU employer must keep (CJEU C-55/18). A shift is a recorded stretch of
+     * availability and breaks are time inside one, so `totals->workingMs` is `onShiftMs` minus
+     * `breakMs`. Requires the control plane.
+     *
+     * @param string|null $from ISO-8601 start, or null
+     * @param string|null $to ISO-8601 end, or null
+     */
+    public function timeEntries(
+        string $workerId,
+        ?string $from = null,
+        ?string $to = null,
+    ): WorkerTimeEntriesResult {
+        return WorkerTimeEntriesResult::fromArray(
+            $this->client->request(
+                'GET',
+                '/workers/' . \rawurlencode($workerId) . '/time-entries',
+                null,
+                ['from' => $from, 'to' => $to],
+            ) ?? []
         );
     }
 

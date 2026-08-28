@@ -113,8 +113,17 @@ def test_listing_tasks_paginates_and_parses_cursor(server, client):
         json_response(
             200,
             {
-                "tasks": [{"id": "t1", "tags": ["x"], "priority": 1, "status": "queued", "workerId": None,
-                           "createdAt": 1, "meta": None}],
+                "tasks": [
+                    {
+                        "id": "t1",
+                        "tags": ["x"],
+                        "priority": 1,
+                        "status": "queued",
+                        "workerId": None,
+                        "createdAt": 1,
+                        "meta": None,
+                    }
+                ],
                 "nextCursor": "cursor_1",
                 "hasMore": True,
             },

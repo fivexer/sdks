@@ -10,17 +10,30 @@ name: contract-sync
 #
 #  2. Are contract/operations.yaml and contract/cases.yaml complete against that snapshot?
 #     Needs no platform access, so it always runs and is the gate that actually blocks a merge.
+#
+#  3. Does every field the reference TypeScript SDK knows exist in all three hand-written SDKs?
+#     Question 2 grades *operations* and cannot see inside a body — which is where drift last
+#     hid: tasks.create existed in all four SDKs while three silently dropped seven fields of
+#     its input, with every parity test green. Needs the platform checkout, same as (1).
 
 on:
     push:
         paths:
             - contract/**
             - scripts/sync-contract.py
+            - scripts/check-field-parity.py
+            - python/src/**
+            - java/src/main/**
+            - php/src/**
             - .github/workflows/contract-sync.yml
     pull_request:
         paths:
             - contract/**
             - scripts/sync-contract.py
+            - scripts/check-field-parity.py
+            - python/src/**
+            - java/src/main/**
+            - php/src/**
     schedule:
         - cron: "0 6 * * *"
 
@@ -66,3 +79,9 @@ jobs:
               env:
                   FIVEXER_PLATFORM: .platform
               run: scripts/sync-contract.py --check
+            # Without the platform checkout there is no reference to compare against and this
+            # skips with exit 0, saying so — it never reports a pass it did not earn.
+            - name: Fail if a reference SDK field is missing from Python, Java or PHP
+              env:
+                  FIVEXER_PLATFORM: .platform
+              run: scripts/check-field-parity.py

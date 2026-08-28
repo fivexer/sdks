@@ -37,21 +37,52 @@ final class Learning
         );
     }
 
-    /** What applying the learned weights would change, without writing anything. */
-    public function previewWeights(?string $workerId = null): LearnedWeightsPreview
-    {
+    /**
+     * What applying the learned weights would change, without writing anything.
+     *
+     * Runs the same synthesis apply does, so the clamp and the manual-weight veto gate are
+     * already reflected in what comes back — and the two flags must be passed here exactly as
+     * they will be passed to {@see self::applyWeights()}, or the preview is of a different
+     * write. Null leaves a flag off the query entirely, so "I did not ask" stays
+     * distinguishable from a deliberate `false`.
+     *
+     * @param bool|null $overrideManual Let a synthesized weight replace one an operator set by hand
+     * @param bool|null $includeUnexploredTags Also weight tags with no reward history yet
+     */
+    public function previewWeights(
+        ?string $workerId = null,
+        ?bool $overrideManual = null,
+        ?bool $includeUnexploredTags = null,
+    ): LearnedWeightsPreview {
         return LearnedWeightsPreview::fromArray(
-            $this->client->request('GET', '/learning/weights/preview', null, ['workerId' => $workerId]) ?? []
+            $this->client->request('GET', '/learning/weights/preview', null, [
+                'workerId' => $workerId,
+                'overrideManual' => $overrideManual === null ? null : ($overrideManual ? 'true' : 'false'),
+                'includeUnexploredTags' => $includeUnexploredTags === null
+                    ? null
+                    : ($includeUnexploredTags ? 'true' : 'false'),
+            ]) ?? []
         );
     }
 
     /**
+     * Write synthesized routing weights.
+     *
      * @param list<string>|null $workerIds The workers to update, or null for every worker
+     * @param bool|null $overrideManual Let a synthesized weight replace one an operator set by hand
+     * @param bool|null $includeUnexploredTags Also weight tags with no reward history yet
      * @return array<string, array<string, float>>
      */
-    public function applyWeights(?array $workerIds = null): array
-    {
-        $body = $workerIds === null ? [] : ['workerIds' => $workerIds];
+    public function applyWeights(
+        ?array $workerIds = null,
+        ?bool $overrideManual = null,
+        ?bool $includeUnexploredTags = null,
+    ): array {
+        $body = Json::compact([
+            'workerIds' => $workerIds,
+            'overrideManual' => $overrideManual,
+            'includeUnexploredTags' => $includeUnexploredTags,
+        ]);
         $data = $this->client->request('POST', '/learning/weights/apply', $body) ?? [];
         /** @var array<string, array<string, float>> */
         return $data['applied'] ?? [];

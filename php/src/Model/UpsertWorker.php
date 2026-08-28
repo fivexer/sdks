@@ -26,6 +26,10 @@ final class UpsertWorker
         private ?float $maxTravelDistanceKm = null,
         /** Per-worker backlog cap overriding the workspace default; 0 = receive nothing */
         private ?int $maxBacklogSize = null,
+        /** @var list<string>|null Replaces team membership wholesale; [] clears it */
+        private ?array $teamIds = null,
+        /** Shift state; null leaves a worker's current state untouched */
+        private ?bool $available = null,
     ) {
     }
 
@@ -87,6 +91,32 @@ final class UpsertWorker
     }
 
     /**
+     * Replaces team membership wholesale. Omit to leave it untouched; an empty array clears it —
+     * the only way to remove a worker from every team, which is why it must survive the
+     * omit-nulls pass rather than being pruned as "empty".
+     *
+     * @param list<string> $teamIds
+     */
+    public function teamIds(array $teamIds): self
+    {
+        $this->teamIds = $teamIds;
+        return $this;
+    }
+
+    /**
+     * Shift state. A *new* worker is created off shift and is not matched until they go
+     * available from the portal or an operator resumes them — availability is a claim a person
+     * makes, not a side effect of existing. Pass true here to create an already-available worker
+     * in one call: the escape hatch for programmatic fleets with no human at a portal. On an
+     * update, omit it to leave the worker's current shift state untouched.
+     */
+    public function available(bool $available): self
+    {
+        $this->available = $available;
+        return $this;
+    }
+
+    /**
      * Serializes only the set fields (omits nulls).
      *
      * @return array<string, mixed>
@@ -103,6 +133,8 @@ final class UpsertWorker
             'longitude' => $this->longitude,
             'maxTravelDistanceKm' => $this->maxTravelDistanceKm,
             'maxBacklogSize' => $this->maxBacklogSize,
+            'teamIds' => $this->teamIds,
+            'available' => $this->available,
         ]);
     }
 }

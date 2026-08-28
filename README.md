@@ -31,9 +31,14 @@ the decision trail says who was considered and why.
 | PHP | `fivexer/sdk` (Packagist) | `composer require fivexer/sdk` |
 | TypeScript | `@fivexer/sdk` (npm) | maintained in the platform repo |
 
-All four cover the same surface. [`contract/operations.yaml`](contract/operations.yaml) is the
-checklist they are held to, and each SDK has a contract-parity test that fails the build if an
-operation in that catalogue has no method behind it.
+All four cover the same surface, and two gates hold them there.
+[`contract/operations.yaml`](contract/operations.yaml) is the operation checklist — each SDK has
+a contract-parity test that fails the build if an operation in that catalogue has no method
+behind it. [`scripts/check-field-parity.py`](scripts/check-field-parity.py) is the finer one: it
+walks the reference TypeScript SDK's types and fails if a *field* it knows is missing from
+Python, Java or PHP. The second exists because the first cannot see inside a request body —
+`tasks.create` was present in all four SDKs while three of them silently dropped seven fields of
+its input, with every parity test green.
 
 ## Three credential planes
 
@@ -122,7 +127,8 @@ their own casing (`tasks().suggestWorkers(...)`, `$client->tasks()->suggestWorke
 | `tasks.context` | `get` `set` `clear` |
 | `tasks.comments` | `add` `list` `remove` |
 | `tasks.attachments` | `create` `confirm` `list` `download` `remove` `upload` |
-| `workers` | `upsert` `list` `get` `patch` `set_availability` `queue` `remove` |
+| `tasks.recurring` | `list` `remove` |
+| `workers` | `upsert` `list` `get` `patch` `set_availability` `queue` `metrics` `time_entries` `remove` |
 | `skills` | `create` `list` `get` `patch` `remove` `suggest` |
 | `teams` | `create` `list` `get` `patch` `remove` `members` `set_members` |
 | `join_links` | `create` `list` `revoke` |
@@ -133,19 +139,26 @@ their own casing (`tasks().suggestWorkers(...)`, `$client->tasks()->suggestWorke
 | `learning` | `status` `worker_stats` `preview_weights` `apply_weights` `revert_weights` `feedback` `reward` `feedback_bulk` `reset` |
 | `notifications.sequences` | `list` `create` `get` `update` `remove` |
 | `notifications.channels` | `list` `create` `get` `update` `remove` |
-| `stats` / `history` | `stats` `sla_stats` `queue_audit` `portal` `history.timeseries` `history.workers` |
+| `stats` / `history` | `stats` `sla_stats` `queue_audit` `portal` `history.timeseries` `history.workers` `history.worker_timeseries` |
 | `team` / `breaks` | `team.presence` `breaks.metrics` |
-| **worker portal** | `login` `logout` `refresh` `join` `accept_invite` `me` `set_availability` `change_pin` `skill_catalog` `set_skills` `queue` `task_detail` `accept` `reject` `complete` `comments` `add_comment` `start_break` `end_break` `breaks_today` `metrics_today` `metrics_window` `team_presence` `update_location` `register_device` `unregister_device` `push_config` `push_subscribe` `push_unsubscribe` |
+| **worker portal** | `login` `logout` `refresh` `join` `accept_invite` `me` `set_availability` `change_pin` `skill_catalog` `set_skills` `queue` `task_detail` `accept` `reject` `complete` `comments` `add_comment` `start_break` `end_break` `breaks_today` `metrics_today` `metrics_window` `time_entries` `team_presence` `update_location` `register_device` `unregister_device` `push_config` `push_subscribe` `push_unsubscribe` `attachments.create` `attachments.confirm` `attachments.list` `attachments.download` `attachments.upload` `voice_ice`¹ |
 
 `history`, `team` and `breaks` need the control plane; a data-plane-only deployment answers
 `501 history_unavailable`.
 
-| **supervisor plane** | `entry` `accept_invite` `logout` `me` `overview` `unpark` `set_priority` `assign` `set_availability` `push_config` `push_subscribe` `push_unsubscribe` |
+| **supervisor plane** | `entry` `accept_invite` `logout` `me` `overview` `unpark` `set_priority` `assign` `set_availability` `push_config` `push_subscribe` `push_unsubscribe` `voice_ice`¹ |
+
+¹ **`voice_ice` is experimental.** Voice is not production-ready: the surface may change or be
+withdrawn in a patch release, and no deployment should depend on it yet. It answers 404
+`voice_disabled` where a workspace has voice switched off — a configuration fact, not an empty
+relay list to place a call through.
 
 All four SDKs cover the whole table — `contract/operations.yaml` is the shared checklist, and each
 SDK's `ContractParityTest` walks it. Run `scripts/sync-contract.py --gaps-only` for the current
-tally; at the last sync that was **138 of 140** `/v1` operations, the remaining two being HTML
-pages a browser opens (the worker invite and QR-join screens), not SDK surface.
+tally; at the last sync that was **150 of 152** `/v1` operations, the remaining two being HTML
+pages a browser opens (the worker invite and QR-join screens), not SDK surface. Run
+`scripts/check-field-parity.py` for the field-level tally — it needs a platform checkout, and
+says so rather than passing when it cannot see one.
 
 ### Pausing a worker
 
@@ -215,10 +228,12 @@ not exist: **PHP releases use unprefixed `v0.1.0` tags.** The upside of the same
 `python-v*` and `java-v*` tags are invisible to Packagist and cannot appear as versions of
 `fivexer/sdk`.
 
-Each SDK is hand-written rather than generated, and held to the `/v1` contract by
-[`contract/operations.yaml`](contract/operations.yaml) — the shared checklist every SDK's
-`ContractParityTest` walks. `scripts/sync-contract.py` refreshes the spec snapshot and reports
-anything a language has not yet covered.
+Each SDK is hand-written rather than generated, and held to the `/v1` contract by two checks:
+[`contract/operations.yaml`](contract/operations.yaml), the shared operation checklist every
+SDK's `ContractParityTest` walks, and
+[`scripts/check-field-parity.py`](scripts/check-field-parity.py), which holds every SDK to the
+*fields* the reference TypeScript SDK knows. `scripts/sync-contract.py` refreshes the spec
+snapshot and reports anything a language has not yet covered.
 
 ## Development
 

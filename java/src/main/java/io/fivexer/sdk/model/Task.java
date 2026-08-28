@@ -25,6 +25,14 @@ public class Task {
     private Double maxDistanceKm;
     private Boolean requireGeo;
     private List<String> allowedCidrs;
+    // The hard skill gate this task was created with, in tag->weight form. Without it a
+    // readiness check on an existing task silently ignores its own gate and reads too optimistic.
+    private Map<String, Double> skillThresholds;
+    // The policies in force on this task, as stored — resolved workspace defaults included
+    private EscalationPolicy escalation;
+    private Integer escalationLevel;   // how far up the ladder this task has already climbed
+    private SlaPolicy sla;
+    private SchedulePolicy schedule;
     private String workflowRunId;      // set on workflow-step tasks
     private String workflowStepId;
     private TaskDataSummary data;      // single-task reads only, never in lists
@@ -44,6 +52,14 @@ public class Task {
     public Double getMaxDistanceKm() { return maxDistanceKm; }
     public Boolean getRequireGeo() { return requireGeo; }
     public List<String> getAllowedCidrs() { return allowedCidrs; }
+    public Map<String, Double> getSkillThresholds() { return skillThresholds; }
+    public EscalationPolicy getEscalation() { return escalation; }
+
+    /** How far up the escalation ladder this task has climbed; null when it never has. */
+    public Integer getEscalationLevel() { return escalationLevel; }
+
+    public SlaPolicy getSla() { return sla; }
+    public SchedulePolicy getSchedule() { return schedule; }
     public String getWorkflowRunId() { return workflowRunId; }
     public String getWorkflowStepId() { return workflowStepId; }
     public TaskDataSummary getData() { return data; }

@@ -49,11 +49,7 @@ def test_creating_a_sequence_schedules_its_steps_relative_to_a_trigger(server, c
     sequence = client.notifications.sequences.create(
         CreateNotificationSequence(
             name="Escalate stale tasks",
-            steps=[
-                NotificationSequenceStep(
-                    trigger="matched", offset_ms=300000, event_type="task.expiring"
-                )
-            ],
+            steps=[NotificationSequenceStep(trigger="matched", offset_ms=300000, event_type="task.expiring")],
             filter_tags=["billing"],
         )
     )

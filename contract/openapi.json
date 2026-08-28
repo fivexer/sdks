@@ -323,6 +323,52 @@
                       }
                     }
                   },
+                  "recurrence": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "everyMs"
+                    ],
+                    "properties": {
+                      "everyMs": {
+                        "type": "number",
+                        "minimum": 60000,
+                        "maximum": 31536000000
+                      },
+                      "startAt": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "windowMs": {
+                        "type": "number",
+                        "minimum": 60000,
+                        "maximum": 31536000000
+                      },
+                      "onMiss": {
+                        "type": "string",
+                        "enum": [
+                          "park",
+                          "drop"
+                        ]
+                      },
+                      "until": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "maxOccurrences": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 10000
+                      },
+                      "catchUp": {
+                        "type": "string",
+                        "enum": [
+                          "skip",
+                          "all"
+                        ]
+                      }
+                    }
+                  },
                   "teamId": {
                     "type": "string",
                     "maxLength": 64
@@ -637,6 +683,52 @@
                             }
                           }
                         },
+                        "recurrence": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "everyMs"
+                          ],
+                          "properties": {
+                            "everyMs": {
+                              "type": "number",
+                              "minimum": 60000,
+                              "maximum": 31536000000
+                            },
+                            "startAt": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "windowMs": {
+                              "type": "number",
+                              "minimum": 60000,
+                              "maximum": 31536000000
+                            },
+                            "onMiss": {
+                              "type": "string",
+                              "enum": [
+                                "park",
+                                "drop"
+                              ]
+                            },
+                            "until": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "maxOccurrences": {
+                              "type": "number",
+                              "minimum": 1,
+                              "maximum": 10000
+                            },
+                            "catchUp": {
+                              "type": "string",
+                              "enum": [
+                                "skip",
+                                "all"
+                              ]
+                            }
+                          }
+                        },
                         "teamId": {
                           "type": "string",
                           "maxLength": 64
@@ -938,6 +1030,52 @@
         "security": [
           {
             "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/tasks/recurring": {
+      "get": {
+        "summary": "List recurring task templates, soonest next occurrence first",
+        "tags": [
+          "tasks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/tasks/recurring/{id}": {
+      "delete": {
+        "summary": "Remove a recurring template (already-created occurrences live on)",
+        "tags": [
+          "tasks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
           }
         ],
         "responses": {
@@ -2313,6 +2451,99 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/workers/{id}/metrics": {
+      "get": {
+        "summary": "Worked time, breaks and throughput for one worker",
+        "tags": [
+          "workers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "default": "7d"
+            },
+            "in": "query",
+            "name": "window",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/workers/{id}/time-entries": {
+      "get": {
+        "summary": "The shift and break log for one worker over a window",
+        "tags": [
+          "workers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            },
+            "in": "query",
+            "name": "format",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
           }
         ],
         "responses": {
@@ -3825,6 +4056,62 @@
         }
       }
     },
+    "/v1/stats/workers/{workerId}/timeseries": {
+      "get": {
+        "summary": "One worker\u2019s historical stats bucketed by hour or day, with worked/break time per day",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ]
+            },
+            "in": "query",
+            "name": "bucket",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workerId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/team/presence": {
       "get": {
         "summary": "Workspace team presence: each worker is working, on break, or paused. Requires the control plane.",
@@ -3875,6 +4162,24 @@
             },
             "in": "query",
             "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "teamId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "workerId",
             "required": false
           }
         ],
@@ -5275,9 +5580,186 @@
         }
       }
     },
+    "/v1/portal/tasks/{id}/attachments": {
+      "post": {
+        "summary": "Start an attachment upload on an own task (presigned PUT)",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "filename",
+                  "contentType",
+                  "sizeBytes"
+                ],
+                "properties": {
+                  "filename": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 128,
+                    "pattern": "^[\\w.+-]+/[\\w.+-]+$"
+                  },
+                  "sizeBytes": {
+                    "type": "number",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "An own task's attachments",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/tasks/{id}/attachments/{attachmentId}/confirm": {
+      "post": {
+        "summary": "Confirm an upload on an own task",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "attachmentId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/tasks/{id}/attachments/{attachmentId}/download": {
+      "get": {
+        "summary": "Short-lived presigned download URL for an own task attachment",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "attachmentId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/portal/me": {
       "get": {
         "summary": "The signed-in worker: identity, shift state, current break",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/voice/ice": {
+      "get": {
+        "summary": "ICE servers for a voice call",
         "tags": [
           "worker-portal"
         ],
@@ -5387,6 +5869,11 @@
                 "properties": {
                   "available": {
                     "type": "boolean"
+                  },
+                  "staleAfterMs": {
+                    "type": "number",
+                    "minimum": 60000,
+                    "maximum": 86400000
                   }
                 }
               }
@@ -5511,6 +5998,24 @@
     "/v1/portal/metrics/today": {
       "get": {
         "summary": "The worker's own metrics for today",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/time-entries": {
+      "get": {
+        "summary": "The worker's own shift and break log (last 7 days)",
         "tags": [
           "worker-portal"
         ],
@@ -5923,6 +6428,24 @@
     "/v1/supervisor/me": {
       "get": {
         "summary": "The signed-in supervisor and their scope",
+        "tags": [
+          "supervisor"
+        ],
+        "security": [
+          {
+            "supervisorToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/supervisor/voice/ice": {
+      "get": {
+        "summary": "ICE servers for a voice call",
         "tags": [
           "supervisor"
         ],
@@ -7070,9 +7593,68 @@
     },
     "/admin/usage/sync": {
       "post": {
-        "summary": "Snapshot Redis meters into usage_periods",
+        "summary": "Snapshot Redis meters into usage_periods (optionally for an explicit period)",
         "tags": [
           "admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{6}$"
+            },
+            "in": "query",
+            "name": "period",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/admin/workspaces/{id}/usage": {
+      "get": {
+        "summary": "Monthly usage for a workspace, newest first (current month is live)",
+        "tags": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 36
+            },
+            "in": "query",
+            "name": "months",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 92
+            },
+            "in": "query",
+            "name": "days",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
         ],
         "security": [
           {
@@ -7911,6 +8493,54 @@
         }
       }
     },
+    "/console/workspaces/{workspaceId}/usage": {
+      "get": {
+        "summary": "Monthly matched-task usage, newest first (current month is live)",
+        "tags": [
+          "console"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 36
+            },
+            "in": "query",
+            "name": "months",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 92
+            },
+            "in": "query",
+            "name": "days",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/console/workspaces/{workspaceId}/connections": {
       "get": {
         "summary": "MCP apps connected to this workspace over OAuth",
@@ -8399,6 +9029,118 @@
                     "type": "number",
                     "minimum": 60000,
                     "maximum": 86400000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/console/workspaces/{workspaceId}/voice": {
+      "get": {
+        "summary": "Voice calling configuration (TURN credentials redacted)",
+        "tags": [
+          "console"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Enable or disable supervisor\u2194worker voice calls",
+        "tags": [
+          "console"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "iceServers": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "urls"
+                      ],
+                      "properties": {
+                        "urls": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 512
+                            },
+                            {
+                              "type": "array",
+                              "maxItems": 8,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              }
+                            }
+                          ]
+                        },
+                        "username": {
+                          "type": "string",
+                          "maxLength": 512
+                        },
+                        "credential": {
+                          "type": "string",
+                          "maxLength": 512
+                        }
+                      }
+                    }
                   }
                 }
               }

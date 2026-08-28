@@ -104,6 +104,59 @@ client.tasks.attachments.upload("task_8fk2", pdf_bytes,
                                 filename="receipt.pdf", content_type="application/pdf")
 ```
 
+## Task policies
+
+Four policies ride on a task, each with its own clock. Omitting one inherits the workspace
+default; `NULL_POLICY` sends an explicit null to opt out of that default — absent and null are
+different instructions, and the omit-nulls pass every other field goes through cannot express
+the second.
+
+```python
+from fivexer import (
+    NULL_POLICY, CreateTask, EscalationPolicy, RecurrencePolicy, SchedulePolicy, SlaPolicy,
+)
+
+client.tasks.create(
+    CreateTask(
+        tags=["billing"],
+        # the response clock: who gets it next when nobody answers
+        escalation=EscalationPolicy(
+            respond_within_ms=60_000,
+            on_no_response="block",
+            tiers=[["billing"], ["billing", "english"]],
+            on_exhausted="park",
+        ),
+        # the completion clock, shelf life and rejection budget
+        sla=SlaPolicy(complete_within_ms=3_600_000, max_rejections=3, on_expire="park"),
+        # when it may be offered at all
+        schedule=SchedulePolicy(not_before=starts_at, not_after=closes_at, on_miss="park"),
+        team_id="team_1",            # hard gate; prefer_team_id only reorders
+    )
+)
+
+client.tasks.create(CreateTask(tags=["billing"], sla=NULL_POLICY))  # opt out of the default
+```
+
+A `recurrence` makes a standing **template** instead of a one-off. The template is never itself
+matchable and never appears in `tasks.list()` or the queue stats — occurrences are cut from it
+one interval ahead of their window, aligned to `start_at + k × every_ms` so they never drift:
+
+```python
+client.tasks.create(
+    CreateTask(
+        tags=["ops"],
+        id="nightly-sweep",
+        recurrence=RecurrencePolicy(every_ms=86_400_000, window_ms=3_600_000, on_miss="park"),
+    )
+)
+
+for template in client.tasks.recurring.list():
+    print(template.id, "next at", template.next_at)
+
+client.tasks.recurring.remove("nightly-sweep")                       # occurrences live on
+client.tasks.recurring.remove("nightly-sweep", drop_scheduled=True)  # ...unless dropped too
+```
+
 ## Worker portal plane
 
 A worker works their own queue with a `wt_` session token. `login()` adopts both the token and
@@ -165,6 +218,25 @@ if worker.push_config().enabled:
 `AsyncFivexerWorker` is the awaited mirror. The token is scoped to exactly one worker and cannot
 reach task creation or worker management — calling an action before `login()` raises
 `worker_id_required` locally rather than guessing an id.
+
+### Files and voice on the worker plane
+
+A worker can attach files to their own tasks — how an unattended agent hands over a deliverable
+as a file rather than a chunked comment thread. Same storage core as the workspace plane, minus
+two things on purpose: the uploader comes from the session (no `worker_id` to spoof), and there
+is no `remove`, because a worker who could delete files could erase the evidence of their own
+work.
+
+```python
+worker.attachments.upload("task_8fk2", pdf_bytes, "report.pdf", "application/pdf")
+files = worker.attachments.list("task_8fk2")
+```
+
+`worker.voice_ice()` and `supervisor.voice_ice()` return the STUN/TURN servers for a call.
+**Experimental — voice is not production-ready**; the surface may change or be withdrawn in a
+patch release. Fetch it per call rather than caching: a TURN credential is short-lived, and a
+stale one fails at the point where the call is already ringing. A workspace with voice switched
+off answers 404 `voice_disabled` — a configuration fact, not an empty relay list to dial through.
 
 ## Operator onboarding
 

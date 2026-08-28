@@ -82,9 +82,7 @@ def test_a_worker_detail_reports_its_effective_skill_weights():
             "id": "agent_1",
             "tags": ["english"],
             "routingWeights": {"english": 100},
-            "skills": [
-                {"skillId": "skl_1", "key": "refunds", "name": "Refunds", "level": 4, "weight": 80}
-            ],
+            "skills": [{"skillId": "skl_1", "key": "refunds", "name": "Refunds", "level": 4, "weight": 80}],
             "maxBacklogSize": 5,
             "available": False,
             "queueDepth": 2,

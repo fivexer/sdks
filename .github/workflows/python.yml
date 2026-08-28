@@ -42,6 +42,12 @@ jobs:
       - name: Lint (ruff)
         working-directory: python
         run: ruff check src tests
+      # Formatting was checked by nobody until 2026-08-28, by which point 27 of 37 files had
+      # drifted — all of them wrapped for a narrower line than pyproject's line-length = 120.
+      # Cosmetic, but it makes every diff noisier than the change it carries.
+      - name: Format (ruff)
+        working-directory: python
+        run: ruff format --check src tests
       - name: Type-check (mypy)
         working-directory: python
         run: mypy src/fivexer

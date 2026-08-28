@@ -61,6 +61,7 @@ from .models import (
     QueueAuditQuery,
     QueueAuditReport,
     QuotaInfo,
+    RecurringTask,
     RevertedWeights,
     SetTaskContext,
     Skill,
@@ -95,9 +96,13 @@ from .models import (
     WorkerInviteResult,
     WorkerLearningStats,
     WorkerList,
+    WorkerMetrics,
     WorkerPortalLink,
     WorkerQueue,
+    WorkerStatsQuery,
     WorkerStatsResult,
+    WorkerTimeEntriesResult,
+    WorkerTimeseriesResult,
     WorkflowDefinition,
     WorkflowDefinitionInput,
     WorkflowDefinitionSummary,
@@ -260,9 +265,7 @@ class Fivexer:
 
     # -- core transport --
     def _send(self, spec: RequestSpec, *, idempotency_key: str | None = None) -> Any:
-        return self._request(
-            spec.method, spec.path, body=spec.body, params=spec.query, idempotency_key=idempotency_key
-        )
+        return self._request(spec.method, spec.path, body=spec.body, params=spec.query, idempotency_key=idempotency_key)
 
     def _request(
         self,
@@ -441,9 +444,7 @@ class AsyncFivexer:
                 return None
             return response.json()
 
-    async def _put_bytes(
-        self, upload_url: str, method: str, headers: Mapping[str, str], payload: bytes
-    ) -> None:
+    async def _put_bytes(self, upload_url: str, method: str, headers: Mapping[str, str], payload: bytes) -> None:
         response = await self._client.request(method, upload_url, headers=dict(headers), content=payload)
         if response.status_code >= 400:
             raise _upload_failed(response.status_code)
@@ -460,6 +461,7 @@ class _Tasks:
         self.context = _TaskContext(client)
         self.comments = _TaskComments(client)
         self.attachments = _TaskAttachments(client)
+        self.recurring = _TaskRecurring(client)
 
     def create_many(self, tasks: builtins.list[CreateTask]) -> BulkTaskReport:
         """Create many tasks in one call. Partial success is normal: read ``failed`` and the
@@ -514,9 +516,7 @@ class _Tasks:
     def reject(self, task_id: str, worker_id: str) -> TaskAction:
         return TaskAction.from_json(self._c._send(specs.tasks_reject(task_id, worker_id)))
 
-    def complete(
-        self, task_id: str, worker_id: str, result: Mapping[str, Any] | None = None
-    ) -> TaskAction:
+    def complete(self, task_id: str, worker_id: str, result: Mapping[str, Any] | None = None) -> TaskAction:
         return TaskAction.from_json(self._c._send(specs.tasks_complete(task_id, worker_id, result)))
 
     def assign(self, task_id: str, worker_id: str, force: bool | None = None) -> AssignTaskResult:
@@ -559,6 +559,30 @@ class _TaskComments:
         self._c._send(specs.comments_remove(task_id, comment_id))
 
 
+class _TaskRecurring:
+    """Standing templates that occurrences are cut from.
+
+    A template is created through :meth:`_Tasks.create` with a ``recurrence`` — there is no
+    separate create here. It is never itself matchable and never appears in ``tasks.list()``,
+    ``tasks.scheduled()`` or the queue stats; only the occurrences cut from it do.
+    """
+
+    def __init__(self, client: Fivexer) -> None:
+        self._c = client
+
+    def list(self) -> builtins.list[RecurringTask]:
+        """Templates with their clocks, soonest next occurrence first."""
+        return _each(self._c._send(specs.tasks_recurring_list()), "recurring", RecurringTask.from_json)
+
+    def remove(self, template_id: str, drop_scheduled: bool = False) -> None:
+        """Stop a template. Occurrences already materialized live on unless ``drop_scheduled``.
+
+        404s on an unknown id rather than succeeding quietly — removing a template twice is not
+        idempotent here, and a caller that treats it as such will mask a wrong id.
+        """
+        self._c._send(specs.tasks_recurring_remove(template_id, drop_scheduled or None))
+
+
 class _TaskAttachments:
     def __init__(self, client: Fivexer) -> None:
         self._c = client
@@ -568,17 +592,13 @@ class _TaskAttachments:
         return CreatedAttachment.from_json(self._c._send(specs.attachments_create(task_id, attachment)))
 
     def confirm(self, task_id: str, attachment_id: str) -> Attachment:
-        return Attachment.from_json(
-            self._c._send(specs.attachments_confirm(task_id, attachment_id))["attachment"]
-        )
+        return Attachment.from_json(self._c._send(specs.attachments_confirm(task_id, attachment_id))["attachment"])
 
     def list(self, task_id: str) -> builtins.list[Attachment]:
         return _each(self._c._send(specs.attachments_list(task_id)), "attachments", Attachment.from_json)
 
     def download(self, task_id: str, attachment_id: str) -> AttachmentDownload:
-        return AttachmentDownload.from_json(
-            self._c._send(specs.attachments_download(task_id, attachment_id))
-        )
+        return AttachmentDownload.from_json(self._c._send(specs.attachments_download(task_id, attachment_id)))
 
     def remove(self, task_id: str, attachment_id: str) -> None:
         self._c._send(specs.attachments_remove(task_id, attachment_id))
@@ -606,9 +626,7 @@ class _TaskAttachments:
                 worker_id=worker_id,
             ),
         )
-        self._c._put_bytes(
-            created.upload.url, created.upload.method, created.upload.headers, bytes(payload)
-        )
+        self._c._put_bytes(created.upload.url, created.upload.method, created.upload.headers, bytes(payload))
         return self.confirm(task_id, created.attachment.id)
 
 
@@ -632,9 +650,7 @@ class _Workers:
         result: dict[str, Any] = self._c._send(specs.workers_patch(worker_id, patch))
         return str(result["id"])
 
-    def set_availability(
-        self, worker_id: str, available: bool, release_backlog: bool = False
-    ) -> WorkerAvailability:
+    def set_availability(self, worker_id: str, available: bool, release_backlog: bool = False) -> WorkerAvailability:
         """Pause or resume a worker.
 
         A plain pause preserves the worker's unaccepted backlog ("back in ten minutes");
@@ -647,6 +663,18 @@ class _Workers:
 
     def queue(self, worker_id: str) -> WorkerQueue:
         return WorkerQueue.from_json(self._c._send(specs.workers_queue(worker_id)))
+
+    def metrics(self, worker_id: str, window: str | None = None) -> WorkerMetrics:
+        """One worker's recorded time and throughput: today plus a rolling window (default 7d).
+
+        Worked time is shift time minus overlapping breaks, from the shift log —
+        the same figure the worker sees in their own portal.
+        """
+        return WorkerMetrics.from_json(self._c._send(specs.workers_metrics(worker_id, window)))
+
+    def time_entries(self, worker_id: str, from_: str | None = None, to: str | None = None) -> WorkerTimeEntriesResult:
+        """The recorded shift and break log for a window (default: the last 7 days)."""
+        return WorkerTimeEntriesResult.from_json(self._c._send(specs.workers_time_entries(worker_id, from_, to)))
 
     def remove(self, worker_id: str) -> None:
         self._c._send(specs.workers_remove(worker_id))
@@ -719,14 +747,10 @@ class _Identities:
 
     def create(self, worker_id: str, identity: CreateWorkerIdentity) -> PublicWorkerIdentity:
         """Set a PIN directly, for a worker who will never receive email (a kiosk, an agent)."""
-        return WorkerIdentityResult.from_json(
-            self._c._send(specs.identities_create(worker_id, identity))
-        ).identity
+        return WorkerIdentityResult.from_json(self._c._send(specs.identities_create(worker_id, identity))).identity
 
     def update(self, worker_id: str, patch: UpdateWorkerIdentity) -> PublicWorkerIdentity:
-        return WorkerIdentityResult.from_json(
-            self._c._send(specs.identities_update(worker_id, patch))
-        ).identity
+        return WorkerIdentityResult.from_json(self._c._send(specs.identities_update(worker_id, patch))).identity
 
     def remove(self, worker_id: str) -> None:
         self._c._send(specs.identities_remove(worker_id))
@@ -751,9 +775,7 @@ class _Skills:
     def remove(self, skill_id: str) -> None:
         self._c._send(specs.skills_remove(skill_id))
 
-    def suggest(
-        self, selected: builtins.list[str] | None = None, limit: int | None = None
-    ) -> builtins.list[Skill]:
+    def suggest(self, selected: builtins.list[str] | None = None, limit: int | None = None) -> builtins.list[Skill]:
         """Skills commonly held alongside the ones already selected."""
         return _each(self._c._send(specs.skills_suggest(selected, limit)), "skills", Skill.from_json)
 
@@ -806,9 +828,7 @@ class _Runs:
     def cancel(self, run_id: str) -> WorkflowRun:
         return WorkflowRun.from_json(self._c._send(specs.runs_cancel(run_id)))
 
-    def complete_step(
-        self, run_id: str, step_id: str, data: Mapping[str, Any] | None = None
-    ) -> WorkflowRun:
+    def complete_step(self, run_id: str, step_id: str, data: Mapping[str, Any] | None = None) -> WorkflowRun:
         """Complete an external (callback) step, advancing the run."""
         return WorkflowRun.from_json(self._c._send(specs.runs_complete_step(run_id, step_id, data)))
 
@@ -826,13 +846,39 @@ class _Learning:
     def worker_stats(self, worker_id: str) -> WorkerLearningStats:
         return WorkerLearningStats.from_json(self._c._send(specs.learning_worker_stats(worker_id)))
 
-    def preview_weights(self, worker_id: str | None = None) -> LearnedWeightsPreview:
-        return LearnedWeightsPreview.from_json(self._c._send(specs.learning_preview_weights(worker_id)))
+    def preview_weights(
+        self,
+        worker_id: str | None = None,
+        *,
+        override_manual: bool | None = None,
+        include_unexplored_tags: bool | None = None,
+    ) -> LearnedWeightsPreview:
+        """What :meth:`apply_weights` would write, without writing it.
+
+        Runs the same synthesis apply does, so the clamp and the manual-weight veto gate are
+        already reflected in what comes back — and the two options must be passed here exactly
+        as they will be passed to apply, or the preview is of a different write.
+        """
+        return LearnedWeightsPreview.from_json(
+            self._c._send(specs.learning_preview_weights(worker_id, override_manual, include_unexplored_tags))
+        )
 
     def apply_weights(
-        self, worker_ids: builtins.list[str] | None = None
+        self,
+        worker_ids: builtins.list[str] | None = None,
+        *,
+        override_manual: bool | None = None,
+        include_unexplored_tags: bool | None = None,
     ) -> dict[str, dict[str, float]]:
-        result: dict[str, Any] = self._c._send(specs.learning_apply_weights(worker_ids))
+        """Write synthesized routing weights.
+
+        ``override_manual`` lets a synthesized weight replace one an operator set by hand;
+        ``include_unexplored_tags`` weights tags the worker has no reward history for. Both are
+        off by default, and both widen what gets written — hence opt-in rather than inferred.
+        """
+        result: dict[str, Any] = self._c._send(
+            specs.learning_apply_weights(worker_ids, override_manual, include_unexplored_tags)
+        )
         return dict(result.get("applied") or {})
 
     def revert_weights(self, worker_ids: builtins.list[str] | None = None) -> RevertedWeights:
@@ -848,13 +894,9 @@ class _Learning:
         result: dict[str, Any] = self._c._send(specs.learning_reward(task_id, reward))
         return bool(result.get("ok", False))
 
-    def feedback_bulk(
-        self, items: builtins.list[LearningFeedbackItem]
-    ) -> builtins.list[LearningFeedbackResult]:
+    def feedback_bulk(self, items: builtins.list[LearningFeedbackItem]) -> builtins.list[LearningFeedbackResult]:
         """Partial success: each result carries its own ``ok`` and optional ``error``."""
-        return _each(
-            self._c._send(specs.learning_feedback_bulk(items)), "results", LearningFeedbackResult.from_json
-        )
+        return _each(self._c._send(specs.learning_feedback_bulk(items)), "results", LearningFeedbackResult.from_json)
 
     def reset(self) -> bool:
         result: dict[str, Any] = self._c._send(specs.learning_reset())
@@ -916,26 +958,41 @@ class _History:
     def timeseries(self, query: StatsWindowQuery | None = None) -> StatsTimeseriesResult:
         return StatsTimeseriesResult.from_json(self._c._send(specs.stats_timeseries(query)))
 
-    def workers(self, query: StatsWindowQuery | None = None) -> WorkerStatsResult:
+    def workers(self, query: WorkerStatsQuery | StatsWindowQuery | None = None) -> WorkerStatsResult:
+        """Per-worker productivity over a window: throughput, response counters and worked time.
+
+        Measured facts for operational review, ordered busiest-first — not a
+        rating, and never fed back into matching.
+        """
         return WorkerStatsResult.from_json(self._c._send(specs.stats_workers(query)))
+
+    def worker_timeseries(self, worker_id: str, query: StatsWindowQuery | None = None) -> WorkerTimeseriesResult:
+        """One worker's series. Worked time and counters appear only on day buckets."""
+        return WorkerTimeseriesResult.from_json(self._c._send(specs.stats_worker_timeseries(worker_id, query)))
 
 
 class _Team:
     def __init__(self, client: Fivexer) -> None:
         self._c = client
 
-    def presence(self) -> TeamPresence:
+    def presence(self, team_id: str | None = None) -> TeamPresence:
         """Who is working vs on break vs paused. Requires the control plane."""
-        return TeamPresence.from_json(self._c._send(specs.team_presence()))
+        return TeamPresence.from_json(self._c._send(specs.team_presence(team_id)))
 
 
 class _Breaks:
     def __init__(self, client: Fivexer) -> None:
         self._c = client
 
-    def metrics(self, from_: str | None = None, to: str | None = None) -> WorkspaceBreakMetrics:
+    def metrics(
+        self,
+        from_: str | None = None,
+        to: str | None = None,
+        team_id: str | None = None,
+        worker_id: str | None = None,
+    ) -> WorkspaceBreakMetrics:
         """Per-worker break rollup for a window (defaults to today)."""
-        return WorkspaceBreakMetrics.from_json(self._c._send(specs.breaks_metrics(from_, to)))
+        return WorkspaceBreakMetrics.from_json(self._c._send(specs.breaks_metrics(from_, to, team_id, worker_id)))
 
 
 # --------------------------------------------------------------------------- #
@@ -949,6 +1006,7 @@ class _AsyncTasks:
         self.context = _AsyncTaskContext(client)
         self.comments = _AsyncTaskComments(client)
         self.attachments = _AsyncTaskAttachments(client)
+        self.recurring = _AsyncTaskRecurring(client)
 
     async def create_many(self, tasks: builtins.list[CreateTask]) -> BulkTaskReport:
         return BulkTaskReport.from_json(await self._c._send(specs.tasks_create_many(tasks)))
@@ -989,15 +1047,11 @@ class _AsyncTasks:
     async def reject(self, task_id: str, worker_id: str) -> TaskAction:
         return TaskAction.from_json(await self._c._send(specs.tasks_reject(task_id, worker_id)))
 
-    async def complete(
-        self, task_id: str, worker_id: str, result: Mapping[str, Any] | None = None
-    ) -> TaskAction:
+    async def complete(self, task_id: str, worker_id: str, result: Mapping[str, Any] | None = None) -> TaskAction:
         return TaskAction.from_json(await self._c._send(specs.tasks_complete(task_id, worker_id, result)))
 
     async def assign(self, task_id: str, worker_id: str, force: bool | None = None) -> AssignTaskResult:
-        return AssignTaskResult.from_json(
-            await self._c._send(specs.tasks_assign(task_id, worker_id, force))
-        )
+        return AssignTaskResult.from_json(await self._c._send(specs.tasks_assign(task_id, worker_id, force)))
 
     async def set_priority(self, task_id: str, priority: float) -> TaskPriority:
         return TaskPriority.from_json(await self._c._send(specs.tasks_set_priority(task_id, priority)))
@@ -1028,13 +1082,25 @@ class _AsyncTaskComments:
         result = await self._c._send(specs.comments_add(task_id, comment))
         return Comment.from_json(result["comment"])
 
-    async def list(
-        self, task_id: str, cursor: str | None = None, limit: int | None = None
-    ) -> CommentPage:
+    async def list(self, task_id: str, cursor: str | None = None, limit: int | None = None) -> CommentPage:
         return CommentPage.from_json(await self._c._send(specs.comments_list(task_id, cursor, limit)))
 
     async def remove(self, task_id: str, comment_id: str) -> None:
         await self._c._send(specs.comments_remove(task_id, comment_id))
+
+
+class _AsyncTaskRecurring:
+    """Async twin of :class:`_TaskRecurring`."""
+
+    def __init__(self, client: AsyncFivexer) -> None:
+        self._c = client
+
+    async def list(self) -> builtins.list[RecurringTask]:
+        result = await self._c._send(specs.tasks_recurring_list())
+        return _each(result, "recurring", RecurringTask.from_json)
+
+    async def remove(self, template_id: str, drop_scheduled: bool = False) -> None:
+        await self._c._send(specs.tasks_recurring_remove(template_id, drop_scheduled or None))
 
 
 class _AsyncTaskAttachments:
@@ -1042,9 +1108,7 @@ class _AsyncTaskAttachments:
         self._c = client
 
     async def create(self, task_id: str, attachment: CreateAttachment) -> CreatedAttachment:
-        return CreatedAttachment.from_json(
-            await self._c._send(specs.attachments_create(task_id, attachment))
-        )
+        return CreatedAttachment.from_json(await self._c._send(specs.attachments_create(task_id, attachment)))
 
     async def confirm(self, task_id: str, attachment_id: str) -> Attachment:
         result = await self._c._send(specs.attachments_confirm(task_id, attachment_id))
@@ -1055,9 +1119,7 @@ class _AsyncTaskAttachments:
         return _each(result, "attachments", Attachment.from_json)
 
     async def download(self, task_id: str, attachment_id: str) -> AttachmentDownload:
-        return AttachmentDownload.from_json(
-            await self._c._send(specs.attachments_download(task_id, attachment_id))
-        )
+        return AttachmentDownload.from_json(await self._c._send(specs.attachments_download(task_id, attachment_id)))
 
     async def remove(self, task_id: str, attachment_id: str) -> None:
         await self._c._send(specs.attachments_remove(task_id, attachment_id))
@@ -1079,9 +1141,7 @@ class _AsyncTaskAttachments:
                 worker_id=worker_id,
             ),
         )
-        await self._c._put_bytes(
-            created.upload.url, created.upload.method, created.upload.headers, bytes(payload)
-        )
+        await self._c._put_bytes(created.upload.url, created.upload.method, created.upload.headers, bytes(payload))
         return await self.confirm(task_id, created.attachment.id)
 
 
@@ -1112,6 +1172,14 @@ class _AsyncWorkers:
 
     async def queue(self, worker_id: str) -> WorkerQueue:
         return WorkerQueue.from_json(await self._c._send(specs.workers_queue(worker_id)))
+
+    async def metrics(self, worker_id: str, window: str | None = None) -> WorkerMetrics:
+        return WorkerMetrics.from_json(await self._c._send(specs.workers_metrics(worker_id, window)))
+
+    async def time_entries(
+        self, worker_id: str, from_: str | None = None, to: str | None = None
+    ) -> WorkerTimeEntriesResult:
+        return WorkerTimeEntriesResult.from_json(await self._c._send(specs.workers_time_entries(worker_id, from_, to)))
 
     async def remove(self, worker_id: str) -> None:
         await self._c._send(specs.workers_remove(worker_id))
@@ -1162,17 +1230,13 @@ class _AsyncIdentities:
         self._c = client
 
     async def list(self) -> builtins.list[PublicWorkerIdentity]:
-        return _each(
-            await self._c._send(specs.identities_list()), "identities", PublicWorkerIdentity.from_json
-        )
+        return _each(await self._c._send(specs.identities_list()), "identities", PublicWorkerIdentity.from_json)
 
     async def invite(self, invite: InviteWorkerIdentity) -> WorkerInviteResult:
         return WorkerInviteResult.from_json(await self._c._send(specs.identities_invite(invite)))
 
     async def resend_invite(self, worker_id: str) -> WorkerInviteResult:
-        return WorkerInviteResult.from_json(
-            await self._c._send(specs.identities_resend_invite(worker_id))
-        )
+        return WorkerInviteResult.from_json(await self._c._send(specs.identities_resend_invite(worker_id)))
 
     async def create(self, worker_id: str, identity: CreateWorkerIdentity) -> PublicWorkerIdentity:
         return WorkerIdentityResult.from_json(
@@ -1180,9 +1244,7 @@ class _AsyncIdentities:
         ).identity
 
     async def update(self, worker_id: str, patch: UpdateWorkerIdentity) -> PublicWorkerIdentity:
-        return WorkerIdentityResult.from_json(
-            await self._c._send(specs.identities_update(worker_id, patch))
-        ).identity
+        return WorkerIdentityResult.from_json(await self._c._send(specs.identities_update(worker_id, patch))).identity
 
     async def remove(self, worker_id: str) -> None:
         await self._c._send(specs.identities_remove(worker_id))
@@ -1233,9 +1295,7 @@ class _AsyncWorkflows:
         return WorkflowDefinition.from_json(await self._c._send(specs.workflows_get(workflow_id)))
 
     async def save(self, workflow_id: str, definition: WorkflowDefinitionInput) -> WorkflowDefinition:
-        return WorkflowDefinition.from_json(
-            await self._c._send(specs.workflows_save(workflow_id, definition))
-        )
+        return WorkflowDefinition.from_json(await self._c._send(specs.workflows_save(workflow_id, definition)))
 
     async def remove(self, workflow_id: str) -> None:
         await self._c._send(specs.workflows_remove(workflow_id))
@@ -1244,9 +1304,7 @@ class _AsyncWorkflows:
         return WorkflowRun.from_json(await self._c._send(specs.workflows_run(workflow_id, start)))
 
     async def list_runs(self, workflow_id: str, query: ListRunsQuery | None = None) -> WorkflowRunPage:
-        return WorkflowRunPage.from_json(
-            await self._c._send(specs.workflows_list_runs(workflow_id, query))
-        )
+        return WorkflowRunPage.from_json(await self._c._send(specs.workflows_list_runs(workflow_id, query)))
 
 
 class _AsyncRuns:
@@ -1265,9 +1323,7 @@ class _AsyncRuns:
     async def cancel(self, run_id: str) -> WorkflowRun:
         return WorkflowRun.from_json(await self._c._send(specs.runs_cancel(run_id)))
 
-    async def complete_step(
-        self, run_id: str, step_id: str, data: Mapping[str, Any] | None = None
-    ) -> WorkflowRun:
+    async def complete_step(self, run_id: str, step_id: str, data: Mapping[str, Any] | None = None) -> WorkflowRun:
         return WorkflowRun.from_json(await self._c._send(specs.runs_complete_step(run_id, step_id, data)))
 
     async def fail_step(self, run_id: str, step_id: str, error: str | None = None) -> WorkflowRun:
@@ -1284,15 +1340,27 @@ class _AsyncLearning:
     async def worker_stats(self, worker_id: str) -> WorkerLearningStats:
         return WorkerLearningStats.from_json(await self._c._send(specs.learning_worker_stats(worker_id)))
 
-    async def preview_weights(self, worker_id: str | None = None) -> LearnedWeightsPreview:
+    async def preview_weights(
+        self,
+        worker_id: str | None = None,
+        *,
+        override_manual: bool | None = None,
+        include_unexplored_tags: bool | None = None,
+    ) -> LearnedWeightsPreview:
         return LearnedWeightsPreview.from_json(
-            await self._c._send(specs.learning_preview_weights(worker_id))
+            await self._c._send(specs.learning_preview_weights(worker_id, override_manual, include_unexplored_tags))
         )
 
     async def apply_weights(
-        self, worker_ids: builtins.list[str] | None = None
+        self,
+        worker_ids: builtins.list[str] | None = None,
+        *,
+        override_manual: bool | None = None,
+        include_unexplored_tags: bool | None = None,
     ) -> dict[str, dict[str, float]]:
-        result: dict[str, Any] = await self._c._send(specs.learning_apply_weights(worker_ids))
+        result: dict[str, Any] = await self._c._send(
+            specs.learning_apply_weights(worker_ids, override_manual, include_unexplored_tags)
+        )
         return dict(result.get("applied") or {})
 
     async def revert_weights(self, worker_ids: builtins.list[str] | None = None) -> RevertedWeights:
@@ -1306,9 +1374,7 @@ class _AsyncLearning:
         result: dict[str, Any] = await self._c._send(specs.learning_reward(task_id, reward))
         return bool(result.get("ok", False))
 
-    async def feedback_bulk(
-        self, items: builtins.list[LearningFeedbackItem]
-    ) -> builtins.list[LearningFeedbackResult]:
+    async def feedback_bulk(self, items: builtins.list[LearningFeedbackItem]) -> builtins.list[LearningFeedbackResult]:
         result = await self._c._send(specs.learning_feedback_bulk(items))
         return _each(result, "results", LearningFeedbackResult.from_json)
 
@@ -1337,12 +1403,8 @@ class _AsyncNotificationSequences:
     async def get(self, sequence_id: str) -> NotificationSequence:
         return NotificationSequence.from_json(await self._c._send(specs.sequences_get(sequence_id)))
 
-    async def update(
-        self, sequence_id: str, update: UpdateNotificationSequence
-    ) -> NotificationSequence:
-        return NotificationSequence.from_json(
-            await self._c._send(specs.sequences_update(sequence_id, update))
-        )
+    async def update(self, sequence_id: str, update: UpdateNotificationSequence) -> NotificationSequence:
+        return NotificationSequence.from_json(await self._c._send(specs.sequences_update(sequence_id, update)))
 
     async def remove(self, sequence_id: str) -> None:
         await self._c._send(specs.sequences_remove(sequence_id))
@@ -1363,9 +1425,7 @@ class _AsyncNotificationChannels:
         return NotificationChannel.from_json(await self._c._send(specs.channels_get(channel_id)))
 
     async def update(self, channel_id: str, update: UpdateNotificationChannel) -> NotificationChannel:
-        return NotificationChannel.from_json(
-            await self._c._send(specs.channels_update(channel_id, update))
-        )
+        return NotificationChannel.from_json(await self._c._send(specs.channels_update(channel_id, update)))
 
     async def remove(self, channel_id: str) -> None:
         await self._c._send(specs.channels_remove(channel_id))
@@ -1378,24 +1438,33 @@ class _AsyncHistory:
     async def timeseries(self, query: StatsWindowQuery | None = None) -> StatsTimeseriesResult:
         return StatsTimeseriesResult.from_json(await self._c._send(specs.stats_timeseries(query)))
 
-    async def workers(self, query: StatsWindowQuery | None = None) -> WorkerStatsResult:
+    async def workers(self, query: WorkerStatsQuery | StatsWindowQuery | None = None) -> WorkerStatsResult:
         return WorkerStatsResult.from_json(await self._c._send(specs.stats_workers(query)))
+
+    async def worker_timeseries(self, worker_id: str, query: StatsWindowQuery | None = None) -> WorkerTimeseriesResult:
+        return WorkerTimeseriesResult.from_json(await self._c._send(specs.stats_worker_timeseries(worker_id, query)))
 
 
 class _AsyncTeam:
     def __init__(self, client: AsyncFivexer) -> None:
         self._c = client
 
-    async def presence(self) -> TeamPresence:
-        return TeamPresence.from_json(await self._c._send(specs.team_presence()))
+    async def presence(self, team_id: str | None = None) -> TeamPresence:
+        return TeamPresence.from_json(await self._c._send(specs.team_presence(team_id)))
 
 
 class _AsyncBreaks:
     def __init__(self, client: AsyncFivexer) -> None:
         self._c = client
 
-    async def metrics(self, from_: str | None = None, to: str | None = None) -> WorkspaceBreakMetrics:
-        return WorkspaceBreakMetrics.from_json(await self._c._send(specs.breaks_metrics(from_, to)))
+    async def metrics(
+        self,
+        from_: str | None = None,
+        to: str | None = None,
+        team_id: str | None = None,
+        worker_id: str | None = None,
+    ) -> WorkspaceBreakMetrics:
+        return WorkspaceBreakMetrics.from_json(await self._c._send(specs.breaks_metrics(from_, to, team_id, worker_id)))
 
 
 def _created_task(result: Mapping[str, Any]) -> Task:

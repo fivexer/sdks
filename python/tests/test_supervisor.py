@@ -60,9 +60,7 @@ def test_expiry_is_epoch_ms_not_the_iso_string_the_worker_plane_sends(server, an
 def test_a_spent_link_is_one_indistinct_400(server, anon_supervisor):
     # Expired, already-used, revoked and never-existed all answer identically — the server
     # refuses to tell a grinder which half of a guess was right.
-    server.set_response(
-        json_response(400, {"error": {"code": "invalid_token", "message": "ask for a new one"}})
-    )
+    server.set_response(json_response(400, {"error": {"code": "invalid_token", "message": "ask for a new one"}}))
 
     with pytest.raises(FivexerApiError) as raised:
         anon_supervisor.accept_invite(AcceptSupervisorInvite(token="spent"))
@@ -253,9 +251,7 @@ def test_an_unset_force_flag_is_absent_from_the_assign_body(server, supervisor):
 def test_a_refused_assignment_reaches_the_caller_as_assign_blocked(server, supervisor):
     # The matcher throws on a refusal (paused, backlog full, prior rejection); the API turns
     # that into a 400 an operator can read, and it must not be swallowed here.
-    server.set_response(
-        json_response(400, {"error": {"code": "assign_blocked", "message": "worker is paused"}})
-    )
+    server.set_response(json_response(400, {"error": {"code": "assign_blocked", "message": "worker is paused"}}))
 
     with pytest.raises(FivexerApiError) as raised:
         supervisor.assign("t1", "agent_1")
@@ -265,9 +261,7 @@ def test_a_refused_assignment_reaches_the_caller_as_assign_blocked(server, super
 
 
 def test_a_task_outside_this_crew_is_refused_not_silently_moved(server, supervisor):
-    server.set_response(
-        json_response(403, {"error": {"code": "out_of_scope", "message": "not your crew"}})
-    )
+    server.set_response(json_response(403, {"error": {"code": "out_of_scope", "message": "not your crew"}}))
 
     with pytest.raises(FivexerApiError) as raised:
         supervisor.unpark("someone_elses")
@@ -278,9 +272,7 @@ def test_a_task_outside_this_crew_is_refused_not_silently_moved(server, supervis
 def test_pausing_a_crew_member_holds_their_backlog_by_default(server, supervisor):
     # Pausing never releases implicitly — that is the engine's rule, and the empty list is how
     # the caller sees the backlog held.
-    server.set_response(
-        json_response(200, {"workerId": "agent_1", "available": False, "releasedTaskIds": []})
-    )
+    server.set_response(json_response(200, {"workerId": "agent_1", "available": False, "releasedTaskIds": []}))
 
     result = supervisor.set_availability("agent_1", False)
 
@@ -291,9 +283,7 @@ def test_pausing_a_crew_member_holds_their_backlog_by_default(server, supervisor
 
 def test_releasing_the_backlog_names_what_moved(server, supervisor):
     server.set_response(
-        json_response(
-            200, {"workerId": "agent_1", "available": False, "releasedTaskIds": ["t1", "t2"]}
-        )
+        json_response(200, {"workerId": "agent_1", "available": False, "releasedTaskIds": ["t1", "t2"]})
     )
 
     result = supervisor.set_availability("agent_1", False, release_backlog=True)
@@ -328,9 +318,7 @@ def test_subscribing_nests_the_browser_keys_and_returns_the_bare_ack(server, sup
     # endpoint and has nothing else to hand back.
     server.set_response(json_response(201, {"ok": True}))
 
-    accepted = supervisor.push_subscribe(
-        PushSubscriptionInput(endpoint="https://fcm/x", p256dh="p2", auth="au")
-    )
+    accepted = supervisor.push_subscribe(PushSubscriptionInput(endpoint="https://fcm/x", p256dh="p2", auth="au"))
 
     assert server.last.url.path == "/v1/supervisor/push/subscriptions"
     assert read_body(server.last) == {
@@ -352,9 +340,7 @@ def test_unsubscribing_sends_only_the_endpoint(server, supervisor):
 def test_an_expired_session_is_a_401_with_no_recovery_attempted(server, supervisor):
     # There is no refresh endpoint on this plane: a dead session means "get a new link".
     # Retrying here would only double the failed calls.
-    server.set_response(
-        json_response(401, {"error": {"code": "unauthorized", "message": "session expired"}})
-    )
+    server.set_response(json_response(401, {"error": {"code": "unauthorized", "message": "session expired"}}))
 
     with pytest.raises(FivexerApiError) as raised:
         supervisor.me()
@@ -374,8 +360,9 @@ def test_a_read_is_retried_on_a_429_honouring_retry_after(server):
     def responder(request):
         attempts["n"] += 1
         if attempts["n"] == 1:
-            return _httpx.Response(429, json={"error": {"code": "rate_limited", "message": "slow"}},
-                                   headers={"retry-after": "0"})
+            return _httpx.Response(
+                429, json={"error": {"code": "rate_limited", "message": "slow"}}, headers={"retry-after": "0"}
+            )
         return _httpx.Response(200, json={"consoleUrl": None})
 
     server.set_responder(responder)
@@ -433,9 +420,7 @@ def test_async_supervisor_mirrors_the_sync_wire(server, async_supervisor):
                 await async_supervisor.assign("t1", "agent_1"),
                 await async_supervisor.set_availability("agent_1", True),
                 await async_supervisor.push_config(),
-                await async_supervisor.push_subscribe(
-                    PushSubscriptionInput(endpoint="e", p256dh="p", auth="a")
-                ),
+                await async_supervisor.push_subscribe(PushSubscriptionInput(endpoint="e", p256dh="p", auth="a")),
                 await async_supervisor.push_unsubscribe("e"),
             )
         finally:
@@ -457,9 +442,7 @@ def test_async_supervisor_mirrors_the_sync_wire(server, async_supervisor):
 
 def test_async_accept_and_logout_manage_the_session(server, async_supervisor):
     server.set_responder(
-        lambda request: empty_response(204)
-        if request.url.path.endswith("logout")
-        else json_response(201, SESSION)
+        lambda request: empty_response(204) if request.url.path.endswith("logout") else json_response(201, SESSION)
     )
 
     async def main():
@@ -514,8 +497,9 @@ def test_async_read_is_retried_on_a_429(server):
     def responder(request):
         attempts["n"] += 1
         if attempts["n"] == 1:
-            return _httpx.Response(429, json={"error": {"code": "rate_limited", "message": "slow"}},
-                                   headers={"retry-after": "0"})
+            return _httpx.Response(
+                429, json={"error": {"code": "rate_limited", "message": "slow"}}, headers={"retry-after": "0"}
+            )
         return _httpx.Response(200, json={"consoleUrl": None})
 
     server.set_responder(responder)

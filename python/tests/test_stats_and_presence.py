@@ -170,9 +170,7 @@ def test_break_metrics_roll_up_per_worker_for_a_window(server, client):
 
 
 def test_break_metrics_default_to_today(server, client):
-    server.set_response(
-        json_response(200, {"workers": [], "totalBreakMs": 0, "breakCount": 0, "activeCount": 0})
-    )
+    server.set_response(json_response(200, {"workers": [], "totalBreakMs": 0, "breakCount": 0, "activeCount": 0}))
 
     assert client.breaks.metrics().break_count == 0
     assert query_pairs(server.last) == {}

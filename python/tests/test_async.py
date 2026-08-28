@@ -32,10 +32,24 @@ def _route(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         return httpx.Response(202, json={"id": body.get("id", "task_1"), "status": "queued"})
     if path == "/v1/tasks" and request.method == "GET":
-        return httpx.Response(200, json={"tasks": [
-            {"id": "task_1", "tags": ["x"], "priority": 1, "status": "queued",
-             "workerId": None, "createdAt": 1, "meta": None}],
-            "nextCursor": None, "hasMore": False})
+        return httpx.Response(
+            200,
+            json={
+                "tasks": [
+                    {
+                        "id": "task_1",
+                        "tags": ["x"],
+                        "priority": 1,
+                        "status": "queued",
+                        "workerId": None,
+                        "createdAt": 1,
+                        "meta": None,
+                    }
+                ],
+                "nextCursor": None,
+                "hasMore": False,
+            },
+        )
     if path.startswith("/v1/tasks/") and path.endswith("/accept"):
         return httpx.Response(200, json={"id": "task_1", "status": "accepted"})
     if path.startswith("/v1/tasks/") and path.endswith("/reject"):
@@ -51,8 +65,18 @@ def _route(request: httpx.Request) -> httpx.Response:
     if request.method == "DELETE":
         return httpx.Response(204)
     if path.startswith("/v1/tasks/"):
-        return httpx.Response(200, json={"id": "task_1", "tags": ["x"], "priority": 1, "status": "accepted",
-                                         "workerId": "agent_1", "createdAt": 1, "meta": None})
+        return httpx.Response(
+            200,
+            json={
+                "id": "task_1",
+                "tags": ["x"],
+                "priority": 1,
+                "status": "accepted",
+                "workerId": "agent_1",
+                "createdAt": 1,
+                "meta": None,
+            },
+        )
     return httpx.Response(404, json={"error": {"code": "not_found", "message": "?"}})
 
 
@@ -71,14 +95,30 @@ def test_async_full_task_and_worker_lifecycle_round_trips_every_endpoint():
         await client.tasks.cancel("task_1")
         await client.workers.remove("agent_1")
         await client.aclose()
-        return dict(worker_id=worker_id, workers=worker_list.workers, queue=queue.task_ids,
-                    created=created.id, fetched=fetched.status, listed=len(listed.tasks),
-                    accepted=accepted.status, rejected=rejected.status, completed=completed.status)
+        return dict(
+            worker_id=worker_id,
+            workers=worker_list.workers,
+            queue=queue.task_ids,
+            created=created.id,
+            fetched=fetched.status,
+            listed=len(listed.tasks),
+            accepted=accepted.status,
+            rejected=rejected.status,
+            completed=completed.status,
+        )
 
     result = asyncio.run(main())
-    assert result == dict(worker_id="agent_1", workers=["agent_1"], queue=["task_1"],
-                          created="task_1", fetched="accepted", listed=1,
-                          accepted="accepted", rejected="queued", completed="completed")
+    assert result == dict(
+        worker_id="agent_1",
+        workers=["agent_1"],
+        queue=["task_1"],
+        created="task_1",
+        fetched="accepted",
+        listed=1,
+        accepted="accepted",
+        rejected="queued",
+        completed="completed",
+    )
 
 
 def test_async_retry_then_success_on_5xx():
@@ -91,8 +131,12 @@ def test_async_retry_then_success_on_5xx():
                 return httpx.Response(503, json={"error": {"code": "internal_error", "message": "down"}})
             return httpx.Response(200, json={"workers": ["a"], "count": 1})
 
-        client = AsyncFivexer(base_url="https://api.fivexer.test", api_key="k", max_retries=1,
-                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        client = AsyncFivexer(
+            base_url="https://api.fivexer.test",
+            api_key="k",
+            max_retries=1,
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
         result = await client.workers.list()
         await client.aclose()
         return result, calls["n"]
@@ -136,11 +180,21 @@ def test_async_upsert_without_argument_defaults_to_empty_body():
 def test_async_context_manager_closes_the_client():
     async def main():
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"plan": "free", "tasks": {}, "workers": 0,
-                                             "meter": {"period": "p", "matchedTasks": 0, "includedTasksPerMonth": 0}})
+            return httpx.Response(
+                200,
+                json={
+                    "plan": "free",
+                    "tasks": {},
+                    "workers": 0,
+                    "meter": {"period": "p", "matchedTasks": 0, "includedTasksPerMonth": 0},
+                },
+            )
 
-        async with AsyncFivexer(base_url="https://api.fivexer.test", api_key="k",
-                                http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler))) as client:
+        async with AsyncFivexer(
+            base_url="https://api.fivexer.test",
+            api_key="k",
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        ) as client:
             stats = await client.stats()
         return stats.plan
 

@@ -47,6 +47,7 @@ class ContractParityTest {
         map.put("tasks.context", TaskContexts.class);
         map.put("tasks.comments", TaskComments.class);
         map.put("tasks.attachments", TaskAttachments.class);
+        map.put("tasks.recurring", TaskRecurring.class);
         map.put("tasks", Tasks.class);
         map.put("workers", Workers.class);
         map.put("skills", Skills.class);
@@ -62,6 +63,7 @@ class ContractParityTest {
         map.put("teams", Teams.class);
         map.put("joinLinks", JoinLinks.class);
         map.put("identities", Identities.class);
+        map.put("worker.attachments", WorkerAttachments.class);
         map.put("worker", FivexerWorker.class);
         map.put("supervisor", FivexerSupervisor.class);
         return map;

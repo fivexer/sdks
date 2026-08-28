@@ -18,6 +18,8 @@ public class UpsertWorker {
     private Double longitude;
     private Double maxTravelDistanceKm;
     private Integer maxBacklogSize;  // per-worker cap overriding the workspace default; 0 = receive nothing
+    private List<String> teamIds;    // replaces membership wholesale; empty list clears it
+    private Boolean available;       // shift state; omit to leave a worker's current state alone
 
     public UpsertWorker() {}
 
@@ -34,6 +36,8 @@ public class UpsertWorker {
     public Double getLongitude() { return longitude; }
     public Double getMaxTravelDistanceKm() { return maxTravelDistanceKm; }
     public Integer getMaxBacklogSize() { return maxBacklogSize; }
+    public List<String> getTeamIds() { return teamIds; }
+    public Boolean getAvailable() { return available; }
 
     public UpsertWorker id(String id) { this.id = id; return this; }
     public UpsertWorker tags(List<String> tags) { this.tags = tags; return this; }
@@ -44,6 +48,21 @@ public class UpsertWorker {
     public UpsertWorker longitude(double longitude) { this.longitude = longitude; return this; }
     public UpsertWorker maxTravelDistanceKm(double km) { this.maxTravelDistanceKm = km; return this; }
     public UpsertWorker maxBacklogSize(int maxBacklogSize) { this.maxBacklogSize = maxBacklogSize; return this; }
+
+    /**
+     * Replaces team membership wholesale. Omit to leave it untouched; an empty list clears it —
+     * the only way to remove a worker from every team.
+     */
+    public UpsertWorker teamIds(List<String> teamIds) { this.teamIds = teamIds; return this; }
+
+    /**
+     * Shift state. A <em>new</em> worker is created off shift and is not matched until they go
+     * available from the portal or an operator resumes them — availability is a claim a person
+     * makes, not a side effect of existing. Pass {@code true} here to create an already-available
+     * worker in one call: the escape hatch for programmatic fleets with no human at a portal. On
+     * an update, omit it to leave the worker's current shift state untouched.
+     */
+    public UpsertWorker available(boolean available) { this.available = available; return this; }
 
     /** Serialises only the fields that were set. */
     public String toJson() {

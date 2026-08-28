@@ -16,6 +16,9 @@ final class WorkerLoad
         public readonly int $backlog,
         public readonly int $maxBacklogSize,
         public readonly bool $available,
+        /** Same distinction as on WorkerDetail: an unaccepted invite, or a join awaiting approval */
+        public readonly bool $invitePending = false,
+        public readonly bool $pendingApproval = false,
     ) {
     }
 
@@ -30,6 +33,8 @@ final class WorkerLoad
             backlog: (int) ($data['backlog'] ?? 0),
             maxBacklogSize: (int) ($data['maxBacklogSize'] ?? 0),
             available: (bool) ($data['available'] ?? false),
+            invitePending: (bool) ($data['invitePending'] ?? false),
+            pendingApproval: (bool) ($data['pendingApproval'] ?? false),
         );
     }
 }

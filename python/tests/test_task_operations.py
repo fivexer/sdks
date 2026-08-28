@@ -91,9 +91,7 @@ def test_check_reports_who_could_take_a_task_without_creating_it(server, client)
         json_response(
             200,
             {
-                "issues": [
-                    {"severity": "warning", "code": "no_coverage", "message": "no welsh", "tag": "welsh"}
-                ],
+                "issues": [{"severity": "warning", "code": "no_coverage", "message": "no welsh", "tag": "welsh"}],
                 "eligibleWorkerCount": 0,
                 "uncoveredTags": ["welsh"],
                 "evaluatedAt": 1_754_000_000_000,

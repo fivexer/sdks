@@ -105,9 +105,7 @@ def test_saving_a_definition_puts_it_at_the_url_that_names_it(server, client):
 
 def test_saving_an_unreachable_graph_is_rejected_by_the_engine(server, client):
     server.set_response(
-        json_response(
-            400, {"error": {"code": "invalid_workflow", "message": "initial step 'missing' is not defined"}}
-        )
+        json_response(400, {"error": {"code": "invalid_workflow", "message": "initial step 'missing' is not defined"}})
     )
 
     with pytest.raises(FivexerApiError) as excinfo:

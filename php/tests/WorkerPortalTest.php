@@ -347,6 +347,66 @@ final class WorkerPortalTest extends ClientTestCase
         self::assertSame(7, $metrics->completedTasks);
     }
 
+    public function testTodaysMetricsAlsoReportShiftTimeWhenTheServerHasAShiftLog(): void
+    {
+        $this->enqueueJson(200, '{"workerId":"agent_1","since":"2026-07-24T00:00:00Z",'
+            . '"completedTasks":7,"breakCount":1,"totalBreakMs":1800000,'
+            . '"longestBreakMs":1800000,"workingMs":27000000,"onShiftMs":28800000,'
+            . '"shiftCount":1}');
+
+        $metrics = $this->worker()->metricsToday();
+
+        self::assertSame(28800000, $metrics->onShiftMs);
+        self::assertSame(1, $metrics->shiftCount);
+        self::assertSame(27000000, $metrics->workingMs);
+    }
+
+    public function testAnOlderServerWithoutAShiftLogReportsNoShiftTime(): void
+    {
+        // onShiftMs/shiftCount are additive: absent means the deployment predates the shift log.
+        $this->enqueueJson(200, '{"workerId":"agent_1","since":"x","completedTasks":0,'
+            . '"breakCount":0,"totalBreakMs":0,"longestBreakMs":0,"workingMs":100}');
+
+        $metrics = $this->worker()->metricsToday();
+
+        self::assertSame(0, $metrics->onShiftMs);
+        self::assertSame(0, $metrics->shiftCount);
+    }
+
+    public function testAWorkerReadsTheirOwnTimeLogWithNoParametersToNarrowIt(): void
+    {
+        // Same record an operator reads — that parity is what keeps it a timesheet.
+        $this->enqueueJson(200, '{"workerId":"agent_1","from":"2026-07-17T00:00:00Z",'
+            . '"to":"2026-07-24T00:00:00Z","entries":['
+            . '{"type":"shift","startedAt":"2026-07-23T08:00:00Z",'
+            . '"endedAt":"2026-07-23T16:00:00Z","durationMs":28800000,"source":"portal",'
+            . '"endReason":"manual"},'
+            . '{"type":"break","startedAt":"2026-07-23T11:30:00Z",'
+            . '"endedAt":"2026-07-23T12:00:00Z","durationMs":1800000,"reason":"lunch"}],'
+            . '"totals":{"shiftCount":1,"onShiftMs":28800000,"breakCount":1,"breakMs":1800000,'
+            . '"workingMs":27000000}}');
+
+        $log = $this->worker()->timeEntries();
+
+        $request = $this->lastRequest();
+        self::assertSame('/v1/portal/me/time-entries', $this->pathOf($request));
+        self::assertSame('GET', $request->getMethod());
+        self::assertSame('', $this->queryOf($request));
+        self::assertSame('agent_1', $log->workerId);
+        self::assertSame('2026-07-17T00:00:00Z', $log->from);
+        self::assertSame('2026-07-24T00:00:00Z', $log->to);
+        self::assertSame('shift', $log->entries[0]->type);
+        self::assertSame('portal', $log->entries[0]->source);
+        self::assertSame('manual', $log->entries[0]->endReason);
+        self::assertSame(28800000, $log->entries[0]->durationMs);
+        self::assertSame('lunch', $log->entries[1]->reason);
+        self::assertSame(1, $log->totals->shiftCount);
+        self::assertSame(28800000, $log->totals->onShiftMs);
+        self::assertSame(1, $log->totals->breakCount);
+        self::assertSame(1800000, $log->totals->breakMs);
+        self::assertSame(27000000, $log->totals->workingMs);
+    }
+
     public function testAWorkerCanSeeWhoElseIsOnShift(): void
     {
         $this->enqueueJson(200, '{"workers":[{"workerId":"agent_1","label":"Ada","status":"working"}],'

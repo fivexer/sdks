@@ -11,6 +11,7 @@ import io.fivexer.sdk.model.SupervisorEntry;
 import io.fivexer.sdk.model.SupervisorMe;
 import io.fivexer.sdk.model.SupervisorOverview;
 import io.fivexer.sdk.model.SupervisorPushAck;
+import io.fivexer.sdk.model.VoiceIceServers;
 import io.fivexer.sdk.model.SupervisorSession;
 import io.fivexer.sdk.model.TaskAction;
 import io.fivexer.sdk.model.TaskPriority;
@@ -199,6 +200,18 @@ public class FivexerSupervisor implements AutoCloseable {
      * Read before prompting for notification permission: {@code enabled: false} means this
      * deployment has no VAPID keypair, and a browser only gives you one prompt.
      */
+    /**
+     * <strong>Experimental — voice is not production-ready.</strong> This surface may change or
+     * be withdrawn in a patch release; do not build on it yet.
+     *
+     * <p>STUN/TURN servers for a call. Same contract as the worker plane's: fetched per call
+     * because a TURN credential is short-lived, and 404 {@code voice_disabled} where the
+     * workspace has no voice.
+     */
+    public VoiceIceServers voiceIce() {
+        return request("GET", "/supervisor/voice/ice", null, VoiceIceServers.class, false);
+    }
+
     public PushConfig pushConfig() {
         return request("GET", "/supervisor/push/config", null, PushConfig.class, false);
     }

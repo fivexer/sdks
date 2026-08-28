@@ -16,9 +16,7 @@ from tests.conftest import json_response, read_body
 
 def test_assigning_a_queued_task_reports_no_previous_worker(server, client):
     server.set_response(
-        json_response(
-            200, {"id": "task_8fk2", "status": "pending", "workerId": "agent_1", "previousWorkerId": None}
-        )
+        json_response(200, {"id": "task_8fk2", "status": "pending", "workerId": "agent_1", "previousWorkerId": None})
     )
 
     result = client.tasks.assign("task_8fk2", "agent_1")
@@ -45,9 +43,7 @@ def test_reassigning_a_pending_task_names_the_worker_it_was_taken_from(server, c
 
 def test_forcing_an_assignment_sends_the_override_flag(server, client):
     server.set_response(
-        json_response(
-            200, {"id": "task_8fk2", "status": "pending", "workerId": "agent_1", "previousWorkerId": None}
-        )
+        json_response(200, {"id": "task_8fk2", "status": "pending", "workerId": "agent_1", "previousWorkerId": None})
     )
 
     client.tasks.assign("task_8fk2", "agent_1", force=True)
@@ -57,9 +53,7 @@ def test_forcing_an_assignment_sends_the_override_flag(server, client):
 
 def test_an_unforced_assignment_respects_the_backlog_cap(server, client):
     server.set_response(
-        json_response(
-            409, {"error": {"code": "worker_backlog_full", "message": "agent_1 is at its backlog limit"}}
-        )
+        json_response(409, {"error": {"code": "worker_backlog_full", "message": "agent_1 is at its backlog limit"}})
     )
 
     with pytest.raises(FivexerApiError) as excinfo:
@@ -178,9 +172,7 @@ def test_reading_a_worker_shows_their_load_against_their_cap(server, client):
 def test_patching_a_worker_changes_only_the_fields_supplied(server, client):
     server.set_response(json_response(200, {"id": "agent_1"}))
 
-    worker_id = client.workers.patch(
-        "agent_1", PatchWorker(skills=[WorkerSkillAssignment(skill_id="skl_1", level=5)])
-    )
+    worker_id = client.workers.patch("agent_1", PatchWorker(skills=[WorkerSkillAssignment(skill_id="skl_1", level=5)]))
 
     assert server.last.method == "PATCH"
     assert read_body(server.last) == {"skills": [{"skillId": "skl_1", "level": 5}]}
@@ -202,9 +194,7 @@ def test_pausing_a_worker_keeps_their_backlog(server, client):
 def test_pausing_and_releasing_reports_which_tasks_were_requeued(server, client):
     # "Gone for the day": the unaccepted backlog goes back to the queue for others.
     server.set_response(
-        json_response(
-            200, {"id": "agent_1", "available": False, "releasedTaskIds": ["task_8fk2", "task_9aa3"]}
-        )
+        json_response(200, {"id": "agent_1", "available": False, "releasedTaskIds": ["task_8fk2", "task_9aa3"]})
     )
 
     result = client.workers.set_availability("agent_1", False, release_backlog=True)
@@ -224,9 +214,7 @@ def test_resuming_a_worker_never_mentions_backlog_release(server, client):
 
 def test_asking_to_release_a_backlog_while_resuming_is_rejected_by_the_api(server, client):
     server.set_response(
-        json_response(
-            400, {"error": {"code": "invalid_body", "message": "releaseBacklog is only valid when pausing"}}
-        )
+        json_response(400, {"error": {"code": "invalid_body", "message": "releaseBacklog is only valid when pausing"}})
     )
 
     with pytest.raises(FivexerApiError) as excinfo:

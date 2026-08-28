@@ -6,8 +6,10 @@ import io.fivexer.sdk.model.UpsertWorker;
 import io.fivexer.sdk.model.WorkerAvailability;
 import io.fivexer.sdk.model.WorkerDetail;
 import io.fivexer.sdk.model.WorkerList;
+import io.fivexer.sdk.model.WorkerMetrics;
 import io.fivexer.sdk.model.WorkerQueue;
 import io.fivexer.sdk.model.WorkerRef;
+import io.fivexer.sdk.model.WorkerTimeEntriesResult;
 
 /** Worker registration, configuration and availability. */
 public final class Workers {
@@ -65,6 +67,41 @@ public final class Workers {
     public WorkerQueue queue(String workerId) {
         return client.request("GET", "/workers/" + Json.enc(workerId) + "/queue", null, null,
                 WorkerQueue.class, false);
+    }
+
+    /** Recorded time and throughput for one worker over the default window (7 days). */
+    public WorkerMetrics metrics(String workerId) {
+        return metrics(workerId, null);
+    }
+
+    /**
+     * The operator-plane mirror of the worker's own portal metrics: today plus a rolling window.
+     * Worked time comes from the shift log — shift time minus overlapping breaks — so both planes
+     * report the same figure. Requires the control plane.
+     *
+     * @param window rolling window such as {@code "7d"} (the default) up to {@code "30d"}, or null
+     */
+    public WorkerMetrics metrics(String workerId, String window) {
+        return client.request("GET", "/workers/" + Json.enc(workerId) + "/metrics", null,
+                Json.query("window", window), WorkerMetrics.class, false);
+    }
+
+    /** The recorded shift and break log for the default window (the last 7 days). */
+    public WorkerTimeEntriesResult timeEntries(String workerId) {
+        return timeEntries(workerId, null, null);
+    }
+
+    /**
+     * The recorded shift and break log for a window — the working-time record an EU employer must
+     * keep (CJEU C-55/18). A shift is a recorded stretch of availability and breaks are time
+     * inside one, so {@code totals.workingMs} is {@code onShiftMs} minus {@code breakMs}.
+     * Requires the control plane.
+     *
+     * @param from ISO-8601 start, or null; @param to ISO-8601 end, or null
+     */
+    public WorkerTimeEntriesResult timeEntries(String workerId, String from, String to) {
+        return client.request("GET", "/workers/" + Json.enc(workerId) + "/time-entries", null,
+                Json.query("from", from, "to", to), WorkerTimeEntriesResult.class, false);
     }
 
     public void remove(String workerId) {

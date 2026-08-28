@@ -13,6 +13,13 @@ final class WorkerSessionToken
 {
     public function __construct(
         public readonly string $token,
+        /**
+         * ISO-8601 moment this token stops working, or null on a server predating the refresh
+         * endpoint. Null rather than a defaulted timestamp: a made-up expiry would rotate either
+         * far too early or never, and rotating only on a 401 puts a failed request in front of
+         * a person at the start of every session.
+         */
+        public readonly ?string $expiresAt = null,
     ) {
     }
 
@@ -24,6 +31,7 @@ final class WorkerSessionToken
     {
         return new self(
             token: (string) ($data['token'] ?? ''),
+            expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt'] : null,
         );
     }
 }

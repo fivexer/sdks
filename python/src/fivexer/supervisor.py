@@ -41,6 +41,7 @@ from .models import (
     TaskAction,
     TaskPriority,
     UnparkTask,
+    VoiceIceServers,
 )
 
 # The worker plane's error mapper, reused rather than re-copied: both planes answer with the
@@ -158,9 +159,7 @@ class FivexerSupervisor:
     def set_priority(self, task_id: str, priority: float) -> TaskPriority:
         return TaskPriority.from_json(self._send(specs.supervisor_set_priority(task_id, priority)))
 
-    def assign(
-        self, task_id: str, worker_id: str, force: bool | None = None
-    ) -> SupervisorAssignResult:
+    def assign(self, task_id: str, worker_id: str, force: bool | None = None) -> SupervisorAssignResult:
         """Hand a task to a specific crew member.
 
         Both ends are scope-checked: a task from another crew, or a worker outside this one,
@@ -168,9 +167,7 @@ class FivexerSupervisor:
         prior rejection) surfaces as 400 ``assign_blocked``; ``force`` bypasses those checks
         but never worker existence.
         """
-        return SupervisorAssignResult.from_json(
-            self._send(specs.supervisor_assign(task_id, worker_id, force))
-        )
+        return SupervisorAssignResult.from_json(self._send(specs.supervisor_assign(task_id, worker_id, force)))
 
     def set_availability(
         self, worker_id: str, available: bool, release_backlog: bool | None = None
@@ -186,6 +183,16 @@ class FivexerSupervisor:
         )
 
     # -- push --
+    def voice_ice(self) -> VoiceIceServers:
+        """**Experimental — voice is not production-ready.** May change or be withdrawn in a
+        patch release; do not build on it yet.
+
+        STUN/TURN servers for a call. Same contract as the worker plane's: fetched per call
+        because a TURN credential is short-lived, and 404 ``voice_disabled`` where the workspace
+        has no voice.
+        """
+        return VoiceIceServers.from_json(self._send(specs.supervisor_voice_ice()))
+
     def push_config(self) -> PushConfig:
         """Read before prompting: ``enabled=False`` means no VAPID keypair on this deployment."""
         return PushConfig.from_json(self._send(specs.supervisor_push_config()))
@@ -303,25 +310,22 @@ class AsyncFivexerSupervisor:
         return TaskAction.from_json(await self._send(specs.supervisor_unpark(task_id, options)))
 
     async def set_priority(self, task_id: str, priority: float) -> TaskPriority:
-        return TaskPriority.from_json(
-            await self._send(specs.supervisor_set_priority(task_id, priority))
-        )
+        return TaskPriority.from_json(await self._send(specs.supervisor_set_priority(task_id, priority)))
 
-    async def assign(
-        self, task_id: str, worker_id: str, force: bool | None = None
-    ) -> SupervisorAssignResult:
-        return SupervisorAssignResult.from_json(
-            await self._send(specs.supervisor_assign(task_id, worker_id, force))
-        )
+    async def assign(self, task_id: str, worker_id: str, force: bool | None = None) -> SupervisorAssignResult:
+        return SupervisorAssignResult.from_json(await self._send(specs.supervisor_assign(task_id, worker_id, force)))
 
     async def set_availability(
         self, worker_id: str, available: bool, release_backlog: bool | None = None
     ) -> SupervisorAvailabilityResult:
         return SupervisorAvailabilityResult.from_json(
-            await self._send(
-                specs.supervisor_set_availability(worker_id, available, release_backlog)
-            )
+            await self._send(specs.supervisor_set_availability(worker_id, available, release_backlog))
         )
+
+    async def voice_ice(self) -> VoiceIceServers:
+        """**Experimental — voice is not production-ready.** See
+        :meth:`FivexerSupervisor.voice_ice`."""
+        return VoiceIceServers.from_json(await self._send(specs.supervisor_voice_ice()))
 
     async def push_config(self) -> PushConfig:
         return PushConfig.from_json(await self._send(specs.supervisor_push_config()))

@@ -23,12 +23,14 @@ public final class Tasks {
     private final TaskContexts contextResource;
     private final TaskComments commentsResource;
     private final TaskAttachments attachmentsResource;
+    private final TaskRecurring recurringResource;
 
     Tasks(Fivexer client) {
         this.client = client;
         this.contextResource = new TaskContexts(client);
         this.commentsResource = new TaskComments(client);
         this.attachmentsResource = new TaskAttachments(client);
+        this.recurringResource = new TaskRecurring(client);
     }
 
     /** The rich data stored against a task: title, description, context and references. */
@@ -39,6 +41,9 @@ public final class Tasks {
 
     /** Files attached to a task. */
     public TaskAttachments attachments() { return attachmentsResource; }
+
+    /** Standing templates that occurrences are cut from. */
+    public TaskRecurring recurring() { return recurringResource; }
 
     /** Enqueue a task. The response carries the id and {@code queued} status. */
     public Task create(CreateTask input) {

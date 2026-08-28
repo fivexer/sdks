@@ -18,11 +18,13 @@ use Fivexer\SDK\Resource\NotificationSequences;
 use Fivexer\SDK\Resource\Runs;
 use Fivexer\SDK\Resource\Skills;
 use Fivexer\SDK\Resource\TaskAttachments;
+use Fivexer\SDK\Resource\TaskRecurring;
 use Fivexer\SDK\Resource\TaskComments;
 use Fivexer\SDK\Resource\TaskContexts;
 use Fivexer\SDK\Resource\Tasks;
 use Fivexer\SDK\Resource\Team;
 use Fivexer\SDK\Resource\Teams;
+use Fivexer\SDK\Resource\WorkerAttachments;
 use Fivexer\SDK\Resource\Workers;
 use Fivexer\SDK\Resource\Workflows;
 use PHPUnit\Framework\TestCase;
@@ -44,6 +46,7 @@ final class ContractParityTest extends TestCase
         'tasks.context' => TaskContexts::class,
         'tasks.comments' => TaskComments::class,
         'tasks.attachments' => TaskAttachments::class,
+        'tasks.recurring' => TaskRecurring::class,
         'tasks' => Tasks::class,
         'workers' => Workers::class,
         'skills' => Skills::class,
@@ -59,6 +62,7 @@ final class ContractParityTest extends TestCase
         'teams' => Teams::class,
         'joinLinks' => JoinLinks::class,
         'identities' => Identities::class,
+        'worker.attachments' => WorkerAttachments::class,
         'worker' => FivexerWorker::class,
         'supervisor' => FivexerSupervisor::class,
     ];

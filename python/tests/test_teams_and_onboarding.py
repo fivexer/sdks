@@ -375,9 +375,11 @@ def test_async_join_link_create_mirrors_the_sync_wire(server, async_client):
 
 def test_async_team_roster_and_removal_mirror_the_sync_wire(server, async_client):
     server.set_responder(
-        lambda request: empty_response(204)
-        if request.method == "DELETE"
-        else json_response(200, {"teamId": "team_1", "workerIds": ["agent_1"]})
+        lambda request: (
+            empty_response(204)
+            if request.method == "DELETE"
+            else json_response(200, {"teamId": "team_1", "workerIds": ["agent_1"]})
+        )
     )
 
     async def main():

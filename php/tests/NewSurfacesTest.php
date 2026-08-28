@@ -914,6 +914,119 @@ final class NewSurfacesTest extends ClientTestCase
         self::assertStringContainsString('from=2026-07-23', $this->queryOf($this->lastRequest()));
     }
 
+    public function testAWorkerRowMergesTheArchiveTheDayCountersAndTheShiftLog(): void
+    {
+        // Three sources in one row: throughput, how they responded, and how long they worked.
+        $this->enqueueJson(200, '{"from":"a","to":"b","workers":[{"workerId":"agent_1",'
+            . '"completed":12,"cancelled":1,"avgWaitMs":4200,"avgHandleMs":90000,'
+            . '"p50HandleMs":80000,"p95HandleMs":210000,"offered":20,"accepted":16,'
+            . '"rejected":2,"failed":1,"expired":1,"released":0,"acceptanceRate":0.8,'
+            . '"onShiftMs":28800000,"breakMs":1800000,"workingMs":27000000,"shiftCount":1,'
+            . '"utilization":0.65}]}');
+
+        $row = $this->client()->history()->workers()->workers[0];
+
+        self::assertSame(80000.0, $row->p50HandleMs);
+        self::assertSame(210000.0, $row->p95HandleMs);
+        self::assertSame(20, $row->offered);
+        self::assertSame(16, $row->accepted);
+        self::assertSame(2, $row->rejected);
+        self::assertSame(1, $row->failed);
+        self::assertSame(1, $row->expired);
+        self::assertSame(0, $row->released);
+        self::assertSame(0.8, $row->acceptanceRate);
+        self::assertSame(28800000, $row->onShiftMs);
+        self::assertSame(1800000, $row->breakMs);
+        self::assertSame(27000000, $row->workingMs);
+        self::assertSame(1, $row->shiftCount);
+        self::assertSame(0.65, $row->utilization);
+    }
+
+    public function testAWorkerWhoWasOnShiftAndFinishedNothingStillHasARow(): void
+    {
+        // The row set is the union of the three sources, so worked time alone earns a row.
+        $this->enqueueJson(200, '{"from":"a","to":"b","workers":[{"workerId":"agent_9",'
+            . '"completed":0,"cancelled":0,"avgWaitMs":null,"avgHandleMs":null,'
+            . '"p50HandleMs":null,"p95HandleMs":null,"acceptanceRate":null,'
+            . '"onShiftMs":3600000,"workingMs":3600000,"shiftCount":1,"utilization":null}]}');
+
+        $row = $this->client()->history()->workers()->workers[0];
+
+        // Null, not 0.0: nobody offered them anything, which is not "they refused everything".
+        self::assertNull($row->acceptanceRate);
+        self::assertNull($row->utilization);
+        self::assertNull($row->p95HandleMs);
+        self::assertSame(0, $row->offered);
+        self::assertSame(3600000, $row->workingMs);
+    }
+
+    public function testACrewFilterNarrowsTheWorkerReport(): void
+    {
+        $this->enqueueJson(200, '{"from":"a","to":"b","workers":[]}');
+
+        $this->client()->history()->workers(null, null, 'day', 'team_night');
+
+        $query = $this->queryOf($this->lastRequest());
+        self::assertStringContainsString('teamId=team_night', $query);
+        self::assertStringContainsString('bucket=day', $query);
+        self::assertStringNotContainsString('from=', $query);
+    }
+
+    public function testAWorkerTimeseriesCarriesWorkedTimeOnDayBuckets(): void
+    {
+        $this->enqueueJson(200, '{"workerId":"agent_1","from":"a","to":"b","bucket":"day",'
+            . '"buckets":[{"bucketStart":"2026-07-23T00:00:00.000Z","completed":12,'
+            . '"cancelled":1,"avgWaitMs":4200,"p50WaitMs":3000,"p95WaitMs":11000,'
+            . '"avgHandleMs":90000,"onShiftMs":28800000,"breakMs":1800000,'
+            . '"workingMs":27000000,"offered":20,"accepted":16,"rejected":2,"failed":1,'
+            . '"expired":1,"released":0}]}');
+
+        $result = $this->client()->history()->workerTimeseries('agent_1', null, null, 'day');
+
+        $request = $this->lastRequest();
+        self::assertSame('/v1/stats/workers/agent_1/timeseries', $this->pathOf($request));
+        self::assertSame('bucket=day', $this->queryOf($request));
+        self::assertSame('agent_1', $result->workerId);
+        self::assertSame('day', $result->bucket);
+        self::assertSame('a', $result->from);
+        self::assertSame('b', $result->to);
+        $bucket = $result->buckets[0];
+        self::assertSame(12, $bucket->completed);
+        self::assertSame(3000.0, $bucket->p50WaitMs);
+        self::assertSame(28800000, $bucket->onShiftMs);
+        self::assertSame(1800000, $bucket->breakMs);
+        self::assertSame(27000000, $bucket->workingMs);
+        self::assertSame(20, $bucket->offered);
+        self::assertSame(16, $bucket->accepted);
+        self::assertSame(2, $bucket->rejected);
+        self::assertSame(1, $bucket->failed);
+        self::assertSame(1, $bucket->expired);
+        self::assertSame(0, $bucket->released);
+    }
+
+    public function testAnHourBucketReportsNoWorkedTimeRatherThanZero(): void
+    {
+        // Worked time is day-grained. Zero here would claim the worker was never on shift.
+        $this->enqueueJson(200, '{"workerId":"agent_1","from":"a","to":"b","bucket":"hour",'
+            . '"buckets":[{"bucketStart":"2026-07-23T01:00:00.000Z","completed":2,'
+            . '"cancelled":0,"avgWaitMs":null,"p50WaitMs":null,"p95WaitMs":null,'
+            . '"avgHandleMs":null}]}');
+
+        $bucket = $this->client()->history()->workerTimeseries('agent_1')->buckets[0];
+
+        self::assertSame('', $this->queryOf($this->lastRequest()));
+        self::assertNull($bucket->onShiftMs);
+        self::assertNull($bucket->breakMs);
+        self::assertNull($bucket->workingMs);
+        self::assertNull($bucket->offered);
+        self::assertNull($bucket->accepted);
+        self::assertNull($bucket->rejected);
+        self::assertNull($bucket->failed);
+        self::assertNull($bucket->expired);
+        self::assertNull($bucket->released);
+        self::assertSame(2, $bucket->completed);
+    }
+
     public function testHistoryOnADataPlaneOnlyDeploymentIsReportedAsUnavailable(): void
     {
         // 501 here is a deployment fact, not a bug — the error code has to say which.
@@ -949,6 +1062,30 @@ final class NewSurfacesTest extends ClientTestCase
 
         self::assertStringContainsString('from=2026-07-24', $this->queryOf($this->lastRequest()));
         self::assertSame(1, $metrics->activeCount);
+    }
+
+    public function testPresenceCanBeNarrowedToOneCrew(): void
+    {
+        $this->enqueueJson(200, '{"workers":[],"counts":{"working":0,"onBreak":0,"paused":0,'
+            . '"total":0}}');
+
+        $this->client()->team()->presence('team_night');
+
+        $request = $this->lastRequest();
+        self::assertSame('/v1/team/presence', $this->pathOf($request));
+        self::assertSame('teamId=team_night', $this->queryOf($request));
+    }
+
+    public function testBreakMetricsCanBeNarrowedToACrewAndAWorker(): void
+    {
+        $this->enqueueJson(200, '{"workers":[],"totalBreakMs":0,"breakCount":0,"activeCount":0}');
+
+        $this->client()->breaks()->metrics(null, null, 'team_night', 'agent_2');
+
+        $query = $this->queryOf($this->lastRequest());
+        self::assertStringContainsString('teamId=team_night', $query);
+        self::assertStringContainsString('workerId=agent_2', $query);
+        self::assertStringNotContainsString('from=', $query);
     }
 
     public function testBreakMetricsDefaultToToday(): void

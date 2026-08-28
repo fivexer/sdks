@@ -250,9 +250,7 @@ def test_async_attachment_upload_reports_a_storage_rejection():
     async def main():
         client = _async_client(handler)
         try:
-            await client.tasks.attachments.upload(
-                "task_1", b"x", filename="a.pdf", content_type="application/pdf"
-            )
+            await client.tasks.attachments.upload("task_1", b"x", filename="a.pdf", content_type="application/pdf")
         finally:
             await client.aclose()
 
@@ -395,8 +393,19 @@ def test_async_workflow_definitions_and_runs_round_trip():
         failed = await client.runs.fail_step("run_1", "s1", "boom")
         await client.workflows.remove("wf_1")
         await client.aclose()
-        return (definitions, definition, saved, started, definition_runs, all_runs, run,
-                steps, cancelled, completed, failed)
+        return (
+            definitions,
+            definition,
+            saved,
+            started,
+            definition_runs,
+            all_runs,
+            run,
+            steps,
+            cancelled,
+            completed,
+            failed,
+        )
 
     (
         definitions,
@@ -490,9 +499,7 @@ def test_async_notification_operations_round_trip():
         updated_seq = await sequences.update("seq_1", UpdateNotificationSequence(enabled=False))
         await sequences.remove("seq_1")
         listed_ch = await channels.list()
-        created_ch = await channels.create(
-            CreateNotificationChannel(type="webhook", target="https://h", events=[])
-        )
+        created_ch = await channels.create(CreateNotificationChannel(type="webhook", target="https://h", events=[]))
         got_ch = await channels.get("ch_1")
         updated_ch = await channels.update("ch_1", UpdateNotificationChannel(disabled=True))
         await channels.remove("ch_1")
@@ -589,8 +596,20 @@ def test_async_worker_portal_covers_login_queue_actions_and_breaks():
         await worker.logout()
         forgotten = worker.session_token
         await worker.aclose()
-        return (queue, detail, accepted, rejected, completed, started, ended, today,
-                metrics, presence, session, forgotten)
+        return (
+            queue,
+            detail,
+            accepted,
+            rejected,
+            completed,
+            started,
+            ended,
+            today,
+            metrics,
+            presence,
+            session,
+            forgotten,
+        )
 
     (
         queue,
@@ -736,13 +755,17 @@ def test_async_worker_waits_the_retry_after_interval_before_retrying():
     def handler(request: httpx.Request) -> httpx.Response:
         calls["n"] += 1
         if calls["n"] == 1:
-            return httpx.Response(503, json={"error": {"code": "busy", "message": "b"}},
-                                  headers={"retry-after": "0.001"})
+            return httpx.Response(
+                503, json={"error": {"code": "busy", "message": "b"}}, headers={"retry-after": "0.001"}
+            )
         return json_response(200, {"workerId": "agent_1", "taskIds": []})
 
     async def main():
         worker = AsyncFivexerWorker(
-            base_url=BASE, token="wt_1", worker_id="agent_1", max_retries=1,
+            base_url=BASE,
+            token="wt_1",
+            worker_id="agent_1",
+            max_retries=1,
             http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         )
         result = await worker.queue()

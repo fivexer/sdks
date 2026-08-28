@@ -18,7 +18,15 @@ final class WorkerMetricsToday
         public readonly int $breakCount,
         public readonly int $totalBreakMs,
         public readonly int $longestBreakMs,
+        /**
+         * Real worked time (shift time minus breaks) once the shift log has today's rows; a
+         * worker predating it keeps the old since-midnight approximation.
+         */
         public readonly int $workingMs,
+        /** Time on shift today, breaks included. Additive — 0 on servers predating the shift log. */
+        public readonly int $onShiftMs = 0,
+        /** Additive — 0 on servers predating the shift log. */
+        public readonly int $shiftCount = 0,
     ) {
     }
 
@@ -36,6 +44,8 @@ final class WorkerMetricsToday
             totalBreakMs: (int) ($data['totalBreakMs'] ?? 0),
             longestBreakMs: (int) ($data['longestBreakMs'] ?? 0),
             workingMs: (int) ($data['workingMs'] ?? 0),
+            onShiftMs: (int) ($data['onShiftMs'] ?? 0),
+            shiftCount: (int) ($data['shiftCount'] ?? 0),
         );
     }
 }

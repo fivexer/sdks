@@ -159,9 +159,7 @@ def test_an_empty_notification_channel_update_sends_an_empty_body():
 
 
 def test_disabling_a_channel_touches_only_the_disabled_flag():
-    assert specs.channels_update("ch_1", UpdateNotificationChannel(disabled=True)).body == {
-        "disabled": True
-    }
+    assert specs.channels_update("ch_1", UpdateNotificationChannel(disabled=True)).body == {"disabled": True}
 
 
 def test_an_empty_sequence_update_sends_an_empty_body():
@@ -171,9 +169,7 @@ def test_an_empty_sequence_update_sends_an_empty_body():
 def test_updating_sequence_steps_serialises_each_step():
     spec = specs.sequences_update(
         "seq_1",
-        UpdateNotificationSequence(
-            steps=[NotificationSequenceStep(trigger="matched", event_type="task.expiring")]
-        ),
+        UpdateNotificationSequence(steps=[NotificationSequenceStep(trigger="matched", event_type="task.expiring")]),
     )
 
     assert spec.body == {"steps": [{"trigger": "matched", "eventType": "task.expiring"}]}
@@ -235,9 +231,7 @@ def test_bulk_feedback_serialises_signals_and_rewards_independently():
         ]
     )
 
-    assert spec.body == {
-        "items": [{"taskId": "t_1", "reward": 1.0}, {"taskId": "t_2", "signals": {"csat": 0.9}}]
-    }
+    assert spec.body == {"items": [{"taskId": "t_1", "reward": 1.0}, {"taskId": "t_2", "signals": {"csat": 0.9}}]}
 
 
 def test_starting_a_break_without_a_reason_sends_an_empty_body():
@@ -357,9 +351,10 @@ def test_a_filtered_task_list_stringifies_every_parameter():
 
 def test_a_stats_window_maps_from_onto_the_reserved_word_safe_field():
     # `from` is a Python keyword, so the model spells it `from_` but the wire must say `from`.
-    assert specs.stats_timeseries(
-        StatsWindowQuery(from_="2026-07-23T00:00:00Z", bucket="day")
-    ).query == {"from": "2026-07-23T00:00:00Z", "bucket": "day"}
+    assert specs.stats_timeseries(StatsWindowQuery(from_="2026-07-23T00:00:00Z", bucket="day")).query == {
+        "from": "2026-07-23T00:00:00Z",
+        "bucket": "day",
+    }
 
 
 def test_break_metrics_default_to_the_whole_window():

@@ -91,9 +91,7 @@ def test_adding_a_comment_returns_the_stored_comment_not_the_envelope(server, cl
         )
     )
 
-    comment = client.tasks.comments.add(
-        "task_8fk2", AddComment(body="Called the customer back", worker_id="agent_1")
-    )
+    comment = client.tasks.comments.add("task_8fk2", AddComment(body="Called the customer back", worker_id="agent_1"))
 
     assert comment.id == "cmt_1"
     assert comment.author.label == "Ada"
@@ -196,9 +194,7 @@ def test_removing_an_attachment_targets_it_by_id(server, client):
 
 
 def test_confirming_an_attachment_marks_it_ready(server, client):
-    server.set_response(
-        json_response(200, {"attachment": {**ATTACHMENT_BODY, "status": "ready", "confirmedAt": 2}})
-    )
+    server.set_response(json_response(200, {"attachment": {**ATTACHMENT_BODY, "status": "ready", "confirmedAt": 2}}))
 
     attachment = client.tasks.attachments.confirm("task_8fk2", "att_1")
 
@@ -255,9 +251,7 @@ def test_uploading_derives_the_size_from_the_payload(server, client):
     handler, calls = _upload_routes()
     server.set_responder(handler)
 
-    client.tasks.attachments.upload(
-        "task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf"
-    )
+    client.tasks.attachments.upload("task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf")
 
     assert read_body(calls[0])["sizeBytes"] == 6
 
@@ -267,9 +261,7 @@ def test_uploading_sends_the_presigned_headers_verbatim(server, client):
     handler, calls = _upload_routes()
     server.set_responder(handler)
 
-    client.tasks.attachments.upload(
-        "task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf"
-    )
+    client.tasks.attachments.upload("task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf")
 
     storage_put = calls[1]
     assert storage_put.method == "PUT"
@@ -281,9 +273,7 @@ def test_uploading_does_not_send_the_api_key_to_object_storage(server, client):
     handler, calls = _upload_routes()
     server.set_responder(handler)
 
-    client.tasks.attachments.upload(
-        "task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf"
-    )
+    client.tasks.attachments.upload("task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf")
 
     assert "authorization" not in calls[1].headers
 
@@ -293,9 +283,7 @@ def test_a_storage_rejection_surfaces_as_an_upload_failure_and_skips_confirmatio
     server.set_responder(handler)
 
     with pytest.raises(FivexerApiError) as excinfo:
-        client.tasks.attachments.upload(
-            "task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf"
-        )
+        client.tasks.attachments.upload("task_8fk2", b"hello!", filename="receipt.pdf", content_type="application/pdf")
 
     assert excinfo.value.code == "upload_failed"
     assert excinfo.value.status_code == 403

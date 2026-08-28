@@ -43,8 +43,9 @@ def test_owned_client_is_closed_via_context_manager():
 
 def test_invalid_retry_after_value_yields_none_on_the_error(server, client):
     server.set_response(
-        json_response(429, {"error": {"code": "rate_limited", "message": "slow down"}},
-                      headers={"retry-after": "not-a-number"})
+        json_response(
+            429, {"error": {"code": "rate_limited", "message": "slow down"}}, headers={"retry-after": "not-a-number"}
+        )
     )
     with pytest.raises(FivexerApiError) as exc:
         client.tasks.list()
@@ -78,8 +79,11 @@ def test_async_quota_headers_attach_to_client_and_error():
                 headers={"x-quota-task-rate-limit": "100", "x-quota-task-rate-remaining": "99"},
             )
 
-        client = AsyncFivexer(base_url="https://api.fivexer.test", api_key="k",
-                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        client = AsyncFivexer(
+            base_url="https://api.fivexer.test",
+            api_key="k",
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
         await client.tasks.create(CreateTask(tags=["x"]))
         q = client.quota
         await client.aclose()
@@ -92,11 +96,16 @@ def test_async_quota_headers_attach_to_client_and_error():
 def test_async_retry_sleeps_then_raises_when_still_rate_limited():
     async def main():
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(429, json={"error": {"code": "rate_limited", "message": "slow down"}},
-                                  headers={"retry-after": "0"})
+            return httpx.Response(
+                429, json={"error": {"code": "rate_limited", "message": "slow down"}}, headers={"retry-after": "0"}
+            )
 
-        client = AsyncFivexer(base_url="https://api.fivexer.test", api_key="k", max_retries=1,
-                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        client = AsyncFivexer(
+            base_url="https://api.fivexer.test",
+            api_key="k",
+            max_retries=1,
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
         with pytest.raises(FivexerApiError) as exc:
             await client.tasks.create(CreateTask(tags=["x"]))
         await client.aclose()
@@ -111,8 +120,9 @@ def test_async_retry_sleeps_then_raises_when_still_rate_limited():
 def test_async_create_rejects_non_createtask():
     async def main():
         transport = httpx.MockTransport(lambda r: json_response(200, {}))
-        client = AsyncFivexer(base_url="https://api.fivexer.test", api_key="k",
-                              http_client=httpx.AsyncClient(transport=transport))
+        client = AsyncFivexer(
+            base_url="https://api.fivexer.test", api_key="k", http_client=httpx.AsyncClient(transport=transport)
+        )
         with pytest.raises(TypeError):
             await client.tasks.create({"tags": ["x"]})  # type: ignore[arg-type]
         await client.aclose()
@@ -123,8 +133,9 @@ def test_async_create_rejects_non_createtask():
 def test_async_upsert_rejects_non_upsertworker():
     async def main():
         transport = httpx.MockTransport(lambda r: json_response(200, {"id": "w"}))
-        client = AsyncFivexer(base_url="https://api.fivexer.test", api_key="k",
-                              http_client=httpx.AsyncClient(transport=transport))
+        client = AsyncFivexer(
+            base_url="https://api.fivexer.test", api_key="k", http_client=httpx.AsyncClient(transport=transport)
+        )
         with pytest.raises(TypeError):
             await client.workers.upsert({"id": "w"})  # type: ignore[arg-type]
         await client.aclose()
@@ -138,12 +149,27 @@ def test_async_upsert_rejects_non_upsertworker():
 def test_async_decisions_list_parses_candidates():
     async def main():
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"decisions": [
-                {"id": "d1", "taskId": "t1", "workerId": "a1", "matchedAt": 1, "mode": "best-match",
-                 "candidates": [{"workerId": "a1", "score": 5}]}]})
+            return httpx.Response(
+                200,
+                json={
+                    "decisions": [
+                        {
+                            "id": "d1",
+                            "taskId": "t1",
+                            "workerId": "a1",
+                            "matchedAt": 1,
+                            "mode": "best-match",
+                            "candidates": [{"workerId": "a1", "score": 5}],
+                        }
+                    ]
+                },
+            )
 
-        client = AsyncFivexer(base_url="https://api.fivexer.test", api_key="k",
-                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        client = AsyncFivexer(
+            base_url="https://api.fivexer.test",
+            api_key="k",
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
         decisions = await client.decisions.list(ListDecisionsQuery(task_id="t1"))
         await client.aclose()
         return decisions

@@ -9,7 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.fivexer.sdk.model.StatsTimeseriesResult;
 import io.fivexer.sdk.model.Task;
 import io.fivexer.sdk.model.TeamPresence;
+import io.fivexer.sdk.model.WorkerProductivity;
 import io.fivexer.sdk.model.WorkerStatsResult;
+import io.fivexer.sdk.model.WorkerTimeseriesBucket;
+import io.fivexer.sdk.model.WorkerTimeseriesResult;
 import io.fivexer.sdk.model.WorkspaceBreakMetrics;
 import io.fivexer.sdk.model.WorkspaceStats;
 import java.util.List;
@@ -159,6 +162,147 @@ class StatsAndPresenceTest extends MockServerBase {
     }
 
     @Test
+    void either_query_type_may_be_null_and_means_the_default_window() throws Exception {
+        // Two overloads: the crew-aware WorkerStatsQuery and the plain window kept for callers
+        // written before teamId existed. Neither may turn a null into a query string.
+        enqueueJson(200, "{\"from\":\"a\",\"to\":\"b\",\"workers\":[]}");
+        enqueueJson(200, "{\"from\":\"a\",\"to\":\"b\",\"workers\":[]}");
+        Fivexer client = client();
+
+        client.history().workers((WorkerStatsQuery) null);
+        assertEquals("/v1/stats/workers", takeRequest().getPath());
+
+        client.history().workers((StatsWindowQuery) null);
+        assertEquals("/v1/stats/workers", takeRequest().getPath());
+    }
+
+    @Test
+    void a_worker_row_merges_the_archive_the_day_counters_and_the_shift_log() throws Exception {
+        // Three sources in one row: throughput, how they responded, and how long they worked.
+        enqueueJson(200, "{\"from\":\"a\",\"to\":\"b\",\"workers\":[{\"workerId\":\"agent_1\","
+                + "\"completed\":12,\"cancelled\":1,\"avgWaitMs\":4200,\"avgHandleMs\":90000,"
+                + "\"p50HandleMs\":80000,\"p95HandleMs\":210000,\"offered\":20,\"accepted\":16,"
+                + "\"rejected\":2,\"failed\":1,\"expired\":1,\"released\":0,\"acceptanceRate\":0.8,"
+                + "\"onShiftMs\":28800000,\"breakMs\":1800000,\"workingMs\":27000000,"
+                + "\"shiftCount\":1,\"utilization\":0.65}]}");
+
+        WorkerProductivity row = client().history().workers().getWorkers().get(0);
+
+        assertEquals(80000.0, row.getP50HandleMs());
+        assertEquals(210000.0, row.getP95HandleMs());
+        assertEquals(20, row.getOffered());
+        assertEquals(16, row.getAccepted());
+        assertEquals(2, row.getRejected());
+        assertEquals(1, row.getFailed());
+        assertEquals(1, row.getExpired());
+        assertEquals(0, row.getReleased());
+        assertEquals(0.8, row.getAcceptanceRate());
+        assertEquals(28800000L, row.getOnShiftMs());
+        assertEquals(1800000L, row.getBreakMs());
+        assertEquals(27000000L, row.getWorkingMs());
+        assertEquals(1, row.getShiftCount());
+        assertEquals(0.65, row.getUtilization());
+    }
+
+    @Test
+    void a_worker_who_was_on_shift_and_finished_nothing_still_has_a_row() throws Exception {
+        // The row set is the union of the three sources, so worked time alone earns a row.
+        enqueueJson(200, "{\"from\":\"a\",\"to\":\"b\",\"workers\":[{\"workerId\":\"agent_9\","
+                + "\"completed\":0,\"cancelled\":0,\"avgWaitMs\":null,\"avgHandleMs\":null,"
+                + "\"p50HandleMs\":null,\"p95HandleMs\":null,\"acceptanceRate\":null,"
+                + "\"onShiftMs\":3600000,\"workingMs\":3600000,\"shiftCount\":1,"
+                + "\"utilization\":null}]}");
+
+        WorkerProductivity row = client().history().workers().getWorkers().get(0);
+
+        // Null, not 0.0: nobody offered them anything, which is not "they refused everything".
+        assertNull(row.getAcceptanceRate());
+        assertNull(row.getUtilization());
+        assertNull(row.getP95HandleMs());
+        assertEquals(0, row.getOffered());
+        assertEquals(3600000L, row.getWorkingMs());
+    }
+
+    @Test
+    void a_crew_filter_narrows_the_worker_report() throws Exception {
+        enqueueJson(200, "{\"from\":\"a\",\"to\":\"b\",\"workers\":[]}");
+
+        client().history().workers(new WorkerStatsQuery().bucket("day").teamId("team_night"));
+
+        RecordedRequest request = takeRequest();
+        assertEquals("/v1/stats/workers", pathOf(request));
+        assertTrue(queryOf(request).contains("teamId=team_night"));
+        assertTrue(queryOf(request).contains("bucket=day"));
+    }
+
+    @Test
+    void a_worker_stats_query_exposes_the_bounds_it_was_built_with() {
+        WorkerStatsQuery query = new WorkerStatsQuery().from("f").to("t").bucket("day").teamId("tm");
+
+        assertEquals("f", query.getFrom());
+        assertEquals("t", query.getTo());
+        assertEquals("day", query.getBucket());
+        assertEquals("tm", query.getTeamId());
+    }
+
+    @Test
+    void a_worker_timeseries_carries_worked_time_on_day_buckets() throws Exception {
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"from\":\"a\",\"to\":\"b\",\"bucket\":\"day\","
+                + "\"buckets\":[{\"bucketStart\":\"2026-07-23T00:00:00.000Z\",\"completed\":12,"
+                + "\"cancelled\":1,\"avgWaitMs\":4200,\"p50WaitMs\":3000,\"p95WaitMs\":11000,"
+                + "\"avgHandleMs\":90000,\"onShiftMs\":28800000,\"breakMs\":1800000,"
+                + "\"workingMs\":27000000,\"offered\":20,\"accepted\":16,\"rejected\":2,"
+                + "\"failed\":1,\"expired\":1,\"released\":0}]}");
+
+        WorkerTimeseriesResult result = client().history().workerTimeseries("agent_1",
+                new StatsWindowQuery().bucket("day"));
+
+        RecordedRequest request = takeRequest();
+        assertEquals("/v1/stats/workers/agent_1/timeseries", pathOf(request));
+        assertTrue(queryOf(request).contains("bucket=day"));
+        assertEquals("agent_1", result.getWorkerId());
+        assertEquals("day", result.getBucket());
+        assertEquals("a", result.getFrom());
+        assertEquals("b", result.getTo());
+        WorkerTimeseriesBucket bucket = result.getBuckets().get(0);
+        assertEquals(12, bucket.getCompleted());
+        assertEquals(3000.0, bucket.getP50WaitMs());
+        assertEquals(28800000L, bucket.getOnShiftMs());
+        assertEquals(1800000L, bucket.getBreakMs());
+        assertEquals(27000000L, bucket.getWorkingMs());
+        assertEquals(20, bucket.getOffered());
+        assertEquals(16, bucket.getAccepted());
+        assertEquals(2, bucket.getRejected());
+        assertEquals(1, bucket.getFailed());
+        assertEquals(1, bucket.getExpired());
+        assertEquals(0, bucket.getReleased());
+    }
+
+    @Test
+    void an_hour_bucket_reports_no_worked_time_rather_than_zero() throws Exception {
+        // Worked time is day-grained. Zero here would claim the worker was never on shift.
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"from\":\"a\",\"to\":\"b\",\"bucket\":\"hour\","
+                + "\"buckets\":[{\"bucketStart\":\"2026-07-23T01:00:00.000Z\",\"completed\":2,"
+                + "\"cancelled\":0,\"avgWaitMs\":null,\"p50WaitMs\":null,\"p95WaitMs\":null,"
+                + "\"avgHandleMs\":null}]}");
+
+        WorkerTimeseriesBucket bucket = client().history()
+                .workerTimeseries("agent_1").getBuckets().get(0);
+
+        assertEquals("/v1/stats/workers/agent_1/timeseries", takeRequest().getPath());
+        assertNull(bucket.getOnShiftMs());
+        assertNull(bucket.getBreakMs());
+        assertNull(bucket.getWorkingMs());
+        assertNull(bucket.getOffered());
+        assertNull(bucket.getAccepted());
+        assertNull(bucket.getRejected());
+        assertNull(bucket.getFailed());
+        assertNull(bucket.getExpired());
+        assertNull(bucket.getReleased());
+        assertEquals(2, bucket.getCompleted());
+    }
+
+    @Test
     void history_on_a_data_plane_only_deployment_is_reported_as_unavailable() {
         // 501 here is a deployment fact, not a bug — the error code has to say which.
         enqueueJson(501, "{\"error\":{\"code\":\"history_unavailable\","
@@ -216,6 +360,30 @@ class StatsAndPresenceTest extends MockServerBase {
         assertEquals(1800000L, metrics.getWorkers().get(0).getLongestBreakMs());
         assertEquals(2700000L, metrics.getWorkers().get(0).getTotalBreakMs());
         assertTrue(metrics.getWorkers().get(0).isActive());
+    }
+
+    @Test
+    void presence_can_be_narrowed_to_one_crew() throws Exception {
+        enqueueJson(200, "{\"workers\":[],\"counts\":{\"working\":0,\"onBreak\":0,\"paused\":0,"
+                + "\"total\":0}}");
+
+        client().team().presence("team_night");
+
+        RecordedRequest request = takeRequest();
+        assertEquals("/v1/team/presence", pathOf(request));
+        assertEquals("teamId=team_night", queryOf(request));
+    }
+
+    @Test
+    void break_metrics_can_be_narrowed_to_a_crew_and_a_worker() throws Exception {
+        enqueueJson(200, "{\"workers\":[],\"totalBreakMs\":0,\"breakCount\":0,\"activeCount\":0}");
+
+        client().breaks().metrics(null, null, "team_night", "agent_2");
+
+        String query = queryOf(takeRequest());
+        assertTrue(query.contains("teamId=team_night"));
+        assertTrue(query.contains("workerId=agent_2"));
+        assertFalse(query.contains("from="));
     }
 
     @Test

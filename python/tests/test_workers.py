@@ -21,9 +21,7 @@ def test_upserting_a_worker_without_an_id_gets_one_assigned(server, client):
 def test_upserting_a_worker_with_tags_and_routing_weights_serializes_them(server, client):
     server.set_response(json_response(200, {"id": "agent_1"}))
 
-    client.workers.upsert(
-        UpsertWorker(id="agent_1", tags=["english", "billing"], routing_weights={"english": 100})
-    )
+    client.workers.upsert(UpsertWorker(id="agent_1", tags=["english", "billing"], routing_weights={"english": 100}))
 
     assert read_body(server.last) == {
         "id": "agent_1",
@@ -36,9 +34,7 @@ def test_upserting_a_field_worker_includes_geo_fields(server, client):
     server.set_response(json_response(200, {"id": "agent_1"}))
 
     client.workers.upsert(
-        UpsertWorker(
-            id="agent_1", ip="203.0.113.5", latitude=59.4, longitude=24.7, max_travel_distance_km=15
-        )
+        UpsertWorker(id="agent_1", ip="203.0.113.5", latitude=59.4, longitude=24.7, max_travel_distance_km=15)
     )
 
     body = read_body(server.last)
@@ -92,8 +88,11 @@ def test_valid_ids_with_dots_and_hyphens_pass_through_unchanged(server, client):
 
 def test_upserting_a_worker_at_the_plan_limit_raises(server, client):
     server.set_response(
-        json_response(402, {"error": {"code": "plan_limit_exceeded", "message": "worker limit of 25 reached"}},
-                      headers={"x-quota-workers-limit": "25", "x-quota-workers-remaining": "0"})
+        json_response(
+            402,
+            {"error": {"code": "plan_limit_exceeded", "message": "worker limit of 25 reached"}},
+            headers={"x-quota-workers-limit": "25", "x-quota-workers-remaining": "0"},
+        )
     )
 
     with pytest.raises(FivexerApiError) as exc:

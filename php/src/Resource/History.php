@@ -7,6 +7,7 @@ namespace Fivexer\SDK\Resource;
 use Fivexer\SDK\Fivexer;
 use Fivexer\SDK\Model\StatsTimeseriesResult;
 use Fivexer\SDK\Model\WorkerStatsResult;
+use Fivexer\SDK\Model\WorkerTimeseriesResult;
 
 /**
  * Historical stats from the archive. Requires the control plane — a data-plane-only deployment
@@ -35,14 +36,47 @@ final class History
         return StatsTimeseriesResult::fromArray($data);
     }
 
-    /** Per-worker productivity over the same window. */
-    public function workers(?string $from = null, ?string $to = null, ?string $bucket = null): WorkerStatsResult
-    {
+    /**
+     * Per-worker productivity over the same window: throughput and handle times from the task
+     * archive, the offered/accepted/rejected counters, and worked time from the shift log. The
+     * row set is the union of those sources, so a worker who was on shift and finished nothing
+     * still appears, with zeros.
+     *
+     * @param string|null $teamId narrow the report to one crew, or null for the whole workspace
+     */
+    public function workers(
+        ?string $from = null,
+        ?string $to = null,
+        ?string $bucket = null,
+        ?string $teamId = null,
+    ): WorkerStatsResult {
         $data = $this->client->request('GET', '/stats/workers', null, [
             'from' => $from,
             'to' => $to,
             'bucket' => $bucket,
+            'teamId' => $teamId,
         ]) ?? [];
         return WorkerStatsResult::fromArray($data);
+    }
+
+    /**
+     * One worker's bucketed history — the per-worker twin of timeseries().
+     *
+     * Worked time and the lifecycle counters are day-grained, so they are populated only on
+     * `bucket=day` buckets and are null on hour buckets.
+     */
+    public function workerTimeseries(
+        string $workerId,
+        ?string $from = null,
+        ?string $to = null,
+        ?string $bucket = null,
+    ): WorkerTimeseriesResult {
+        $data = $this->client->request(
+            'GET',
+            '/stats/workers/' . \rawurlencode($workerId) . '/timeseries',
+            null,
+            ['from' => $from, 'to' => $to, 'bucket' => $bucket],
+        ) ?? [];
+        return WorkerTimeseriesResult::fromArray($data);
     }
 }

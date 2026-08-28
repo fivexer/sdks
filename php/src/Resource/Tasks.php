@@ -32,12 +32,14 @@ final class Tasks
     private readonly TaskContexts $contextResource;
     private readonly TaskComments $commentsResource;
     private readonly TaskAttachments $attachmentsResource;
+    private readonly TaskRecurring $recurringResource;
 
     public function __construct(private readonly Fivexer $client)
     {
         $this->contextResource = new TaskContexts($client);
         $this->commentsResource = new TaskComments($client);
         $this->attachmentsResource = new TaskAttachments($client);
+        $this->recurringResource = new TaskRecurring($client);
     }
 
     /** The rich data stored against a task: title, description, context and references. */
@@ -56,6 +58,12 @@ final class Tasks
     public function attachments(): TaskAttachments
     {
         return $this->attachmentsResource;
+    }
+
+    /** Standing templates that occurrences are cut from. */
+    public function recurring(): TaskRecurring
+    {
+        return $this->recurringResource;
     }
 
     /** Create a task; the server queues it for matching. */

@@ -66,14 +66,19 @@ def params(payload: Mapping[str, Any]) -> dict[str, str]:
     return {key: str(value) for key, value in payload.items() if value is not None}
 
 
+def _policy(value: Any, parse: Any) -> Any:
+    """Parse a nullable policy object. Absent and null both read as ``None`` here: on the way
+    *out* of the API the distinction the input side keeps (inherit vs opt out) has already been
+    resolved by the server, so a reader only ever sees the effective policy or none at all."""
+    return None if value is None else parse.from_json(value)
+
+
 def _each(data: Mapping[str, Any], key: str, parse: Callable[[Mapping[str, Any]], T]) -> list[T]:
     """Parse a list-valued key, treating missing and null alike as empty."""
     return [parse(item) for item in (data.get(key) or [])]
 
 
-def _each_or_none(
-    data: Mapping[str, Any], key: str, parse: Callable[[Mapping[str, Any]], T]
-) -> list[T] | None:
+def _each_or_none(data: Mapping[str, Any], key: str, parse: Callable[[Mapping[str, Any]], T]) -> list[T] | None:
     """Parse a nullable list-valued key, preserving the null/empty distinction."""
     raw = data.get(key)
     return None if raw is None else [parse(item) for item in raw]
@@ -151,11 +156,20 @@ class Task:
     meta: dict[str, Any] | None
     # Truncated copy of the rich-data title; the full value lives on tasks.context.get()
     title: str | None = None
+    # The hard skill gate this task was created with, in tag->weight form. Without it a
+    # readiness check on an existing task silently ignores its own gate and reads too optimistic.
+    skill_thresholds: dict[str, float] | None = None
     latitude: float | None = None
     longitude: float | None = None
     max_distance_km: float | None = None
     require_geo: bool | None = None
     allowed_cidrs: list[str] | None = None
+    # The policies in force on this task, as stored — resolved workspace defaults included
+    escalation: EscalationPolicy | None = None
+    # How far up the escalation ladder this task has already climbed
+    escalation_level: int | None = None
+    sla: SlaPolicy | None = None
+    schedule: SchedulePolicy | None = None
     # Set on workflow-step tasks: the run and step this task belongs to
     workflow_run_id: str | None = None
     workflow_step_id: str | None = None
@@ -183,11 +197,232 @@ class Task:
             max_distance_km=data.get("maxDistanceKm"),
             require_geo=data.get("requireGeo"),
             allowed_cidrs=data.get("allowedCidrs"),
+            skill_thresholds=data.get("skillThresholds"),
+            escalation=_policy(data.get("escalation"), EscalationPolicy),
+            escalation_level=_int_or_none(data.get("escalationLevel")),
+            sla=_policy(data.get("sla"), SlaPolicy),
+            schedule=_policy(data.get("schedule"), SchedulePolicy),
             workflow_run_id=data.get("workflowRunId"),
             workflow_step_id=data.get("workflowStepId"),
             data=None if summary is None else TaskDataSummary.from_json(summary),
             result=data.get("result"),
             archived=bool(data.get("archived", False)),
+        )
+
+
+class _NullPolicy:
+    """Sentinel for an explicit JSON ``null`` on a nullable policy field.
+
+    ``None`` means *absent* — inherit whatever the workspace sets as its default. ``NULL_POLICY``
+    means *send null* — opt this task out of the default entirely. They are different wire values
+    and different behaviour, so the SDK cannot collapse the two into one.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "NULL_POLICY"
+
+
+#: Opt a task out of a workspace policy default. See :class:`_NullPolicy`.
+NULL_POLICY = _NullPolicy()
+
+
+@dataclass
+class EscalationPolicy:
+    """What happens when the worker a task was matched to lets the response deadline run out.
+
+    Without a policy the task is simply requeued after the workspace default and the same worker
+    may win it straight back — which is the failure mode ``on_no_response="block"`` exists to stop.
+    """
+
+    # Milliseconds the matched worker has to respond (1s-24h)
+    respond_within_ms: int
+    # 'block' stops the non-responder winning it back; 'allow' is the default
+    on_no_response: str | None = None
+    # Added to the task's priority on every escalation, so an aging task outranks fresh work
+    priority_boost: float | None = None
+    # Tag sets to widen to, one rung per escalation
+    tiers: list[list[str]] | None = None
+    max_escalations: int | None = None
+    # Where an exhausted ladder leaves the task: back in the queue, or parked for review
+    on_exhausted: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact(
+            {
+                "onNoResponse": self.on_no_response,
+                "priorityBoost": self.priority_boost,
+                "tiers": self.tiers,
+                "maxEscalations": self.max_escalations,
+                "onExhausted": self.on_exhausted,
+            }
+        )
+        payload["respondWithinMs"] = self.respond_within_ms
+        return payload
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> EscalationPolicy:
+        tiers = data.get("tiers")
+        return cls(
+            respond_within_ms=int(data.get("respondWithinMs", 0)),
+            on_no_response=data.get("onNoResponse"),
+            priority_boost=data.get("priorityBoost"),
+            tiers=None if tiers is None else [list(t) for t in tiers],
+            max_escalations=_int_or_none(data.get("maxEscalations")),
+            on_exhausted=data.get("onExhausted"),
+        )
+
+
+@dataclass
+class SlaPolicy:
+    """The completion clock, the shelf life and the rejection budget.
+
+    Complements :class:`EscalationPolicy` rather than overlapping it: escalation owns the
+    *response* clock, SLA owns everything after. An SLA never gates matching eligibility — a
+    breach is reported and acted on, it does not make the task unmatchable.
+    """
+
+    # From acceptance. A breach fires once and is handled by on_completion_breach
+    complete_within_ms: int | None = None
+    # Shelf life from first enqueue — never extended by a requeue
+    expire_after_ms: int | None = None
+    # Rejections allowed before on_max_rejections applies; outranks the escalation ladder
+    max_rejections: int | None = None
+    # 'notify' | 'requeue' | 'fail' | 'park'
+    on_completion_breach: str | None = None
+    # 'park' | 'fail' | 'keep'
+    on_max_rejections: str | None = None
+    # 'drop' | 'park'
+    on_expire: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return compact(
+            {
+                "completeWithinMs": self.complete_within_ms,
+                "expireAfterMs": self.expire_after_ms,
+                "maxRejections": self.max_rejections,
+                "onCompletionBreach": self.on_completion_breach,
+                "onMaxRejections": self.on_max_rejections,
+                "onExpire": self.on_expire,
+            }
+        )
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SlaPolicy:
+        return cls(
+            complete_within_ms=_int_or_none(data.get("completeWithinMs")),
+            expire_after_ms=_int_or_none(data.get("expireAfterMs")),
+            max_rejections=_int_or_none(data.get("maxRejections")),
+            on_completion_breach=data.get("onCompletionBreach"),
+            on_max_rejections=data.get("onMaxRejections"),
+            on_expire=data.get("onExpire"),
+        )
+
+
+@dataclass
+class SchedulePolicy:
+    """When a task may be offered. Unlike escalation and SLA there is no workspace default to
+    inherit — these timestamps are absolute epoch-milliseconds."""
+
+    # Held out of matching until this moment; the task reads as 'scheduled' until then
+    not_before: int | None = None
+    # The offer window closes here; an unserved task is parked or dropped
+    not_after: int | None = None
+    # 'park' keeps a missed task for review, 'drop' discards it
+    on_miss: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return compact({"notBefore": self.not_before, "notAfter": self.not_after, "onMiss": self.on_miss})
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SchedulePolicy:
+        return cls(
+            not_before=_int_or_none(data.get("notBefore")),
+            not_after=_int_or_none(data.get("notAfter")),
+            on_miss=data.get("onMiss"),
+        )
+
+
+@dataclass
+class RecurrencePolicy:
+    """How a recurring task repeats.
+
+    A task created with a recurrence becomes a standing *template*, never itself matchable: the
+    platform materializes each occurrence as an ordinary scheduled task one interval ahead of its
+    window. Occurrences align to ``start_at + k x every_ms`` and never drift, so a template that
+    was down for an hour resumes on the original grid rather than an hour late.
+    """
+
+    # Milliseconds between one occurrence's window opening and the next (min 60s)
+    every_ms: int
+    # Epoch ms the first window opens. Default: now
+    start_at: int | None = None
+    # Offer window per occurrence; must be shorter than every_ms
+    window_ms: int | None = None
+    # What an unserved window does to that occurrence: 'park' | 'drop'
+    on_miss: str | None = None
+    # No occurrence opens after this epoch ms; the template retires
+    until: int | None = None
+    max_occurrences: int | None = None
+    # 'skip' (default) resumes without back-filling elapsed slots; 'all' materializes them
+    catch_up: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact(
+            {
+                "startAt": self.start_at,
+                "windowMs": self.window_ms,
+                "onMiss": self.on_miss,
+                "until": self.until,
+                "maxOccurrences": self.max_occurrences,
+                "catchUp": self.catch_up,
+            }
+        )
+        payload["everyMs"] = self.every_ms
+        return payload
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> RecurrencePolicy:
+        return cls(
+            every_ms=int(data.get("everyMs", 0)),
+            start_at=_int_or_none(data.get("startAt")),
+            window_ms=_int_or_none(data.get("windowMs")),
+            on_miss=data.get("onMiss"),
+            until=_int_or_none(data.get("until")),
+            max_occurrences=_int_or_none(data.get("maxOccurrences")),
+            catch_up=data.get("catchUp"),
+        )
+
+
+@dataclass
+class RecurringTask:
+    """A standing template with its clock, from ``client.tasks.recurring.list()``.
+
+    The template is never matchable and never appears in ``tasks.list()`` or the queue stats —
+    only the occurrences cut from it are.
+    """
+
+    id: str
+    tags: list[str]
+    recurrence: RecurrencePolicy
+    # Epoch ms the next occurrence's window opens
+    next_at: int
+    # Occurrences materialized so far
+    occurrences: int
+    priority: float | None = None
+    title: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> RecurringTask:
+        return cls(
+            id=data["id"],
+            tags=list(data.get("tags") or []),
+            recurrence=RecurrencePolicy.from_json(data.get("recurrence") or {}),
+            next_at=int(data.get("nextAt", 0)),
+            occurrences=int(data.get("occurrences", 0)),
+            priority=data.get("priority"),
+            title=data.get("title"),
         )
 
 
@@ -203,6 +438,8 @@ class CreateTask:
     id: str | None = None
     priority: float | None = None
     skill_thresholds: dict[str, float] | None = None
+    # Hard skill gate in catalog terms — the typed twin of skill_thresholds
+    required_skills: list[RequiredSkill] | None = None
     vetoed_workers: list[str] | None = None
     meta: dict[str, Any] | None = None
     # Rich data, inlined at creation time
@@ -218,6 +455,18 @@ class CreateTask:
     require_geo: bool | None = None
     # Only workers whose registered IP falls in one of these ranges are eligible
     allowed_cidrs: list[str] | None = None
+    # Response clock. Omit to inherit the workspace default; pass ``NULL_POLICY`` to opt out
+    escalation: EscalationPolicy | _NullPolicy | None = None
+    # Completion clock, shelf life and rejection budget. Same inheritance rule as escalation
+    sla: SlaPolicy | _NullPolicy | None = None
+    # When this task may be offered. No workspace default to inherit — timestamps are absolute
+    schedule: SchedulePolicy | None = None
+    # Makes this a standing template instead of a one-off. Mutually exclusive with schedule
+    recurrence: RecurrencePolicy | None = None
+    # Hard team gate: only members are eligible. Mutually exclusive with prefer_team_id
+    team_id: str | None = None
+    # Soft team preference: members rank first, everyone else stays eligible
+    prefer_team_id: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         payload = compact(
@@ -225,6 +474,9 @@ class CreateTask:
                 "id": self.id,
                 "priority": self.priority,
                 "skillThresholds": self.skill_thresholds,
+                "requiredSkills": (
+                    None if self.required_skills is None else [r.to_json() for r in self.required_skills]
+                ),
                 "vetoedWorkers": self.vetoed_workers,
                 "meta": self.meta,
                 "title": self.title,
@@ -236,8 +488,19 @@ class CreateTask:
                 "maxDistanceKm": self.max_distance_km,
                 "requireGeo": self.require_geo,
                 "allowedCidrs": self.allowed_cidrs,
+                "schedule": None if self.schedule is None else self.schedule.to_json(),
+                "recurrence": None if self.recurrence is None else self.recurrence.to_json(),
+                "teamId": self.team_id,
+                "preferTeamId": self.prefer_team_id,
             }
         )
+        # escalation and sla are nullable on the wire in a way the others are not: an explicit
+        # null opts the task out of the workspace default, so NULL_POLICY has to survive compact().
+        for name, policy in (("escalation", self.escalation), ("sla", self.sla)):
+            if isinstance(policy, _NullPolicy):
+                payload[name] = None
+            elif policy is not None:
+                payload[name] = policy.to_json()
         payload["tags"] = self.tags
         return payload
 
@@ -471,10 +734,24 @@ class CreateAttachment:
 
     def to_json(self) -> dict[str, Any]:
         payload = compact({"workerId": self.worker_id})
-        payload.update(
-            {"filename": self.filename, "contentType": self.content_type, "sizeBytes": self.size_bytes}
-        )
+        payload.update({"filename": self.filename, "contentType": self.content_type, "sizeBytes": self.size_bytes})
         return payload
+
+
+@dataclass
+class WorkerCreateAttachment:
+    """Worker-plane upload input.
+
+    The same shape as :class:`CreateAttachment` minus ``worker_id``: on this plane the uploader
+    is the session, so a worker cannot attribute a file to anyone else.
+    """
+
+    filename: str
+    content_type: str
+    size_bytes: int
+
+    def to_json(self) -> dict[str, Any]:
+        return {"filename": self.filename, "contentType": self.content_type, "sizeBytes": self.size_bytes}
 
 
 @dataclass
@@ -618,6 +895,14 @@ class UpsertWorker:
     max_travel_distance_km: float | None = None
     # Per-worker backlog cap overriding the workspace default (0 = receive nothing)
     max_backlog_size: int | None = None
+    # Replaces team membership wholesale. Omit to leave it untouched; [] clears it
+    team_ids: list[str] | None = None
+    # Shift state. A *new* worker is created off shift and is not matched until they go
+    # available from the portal or an operator resumes them — availability is a claim a person
+    # makes, not a side effect of existing. Pass True to create an already-available worker in
+    # one call: the escape hatch for programmatic fleets with no human at a portal. On an
+    # update, omit it to leave the worker's current shift state untouched.
+    available: bool | None = None
 
     def to_json(self) -> dict[str, Any]:
         return compact(
@@ -626,11 +911,13 @@ class UpsertWorker:
                 "tags": self.tags,
                 "routingWeights": self.routing_weights,
                 "skills": None if self.skills is None else [s.to_json() for s in self.skills],
+                "teamIds": self.team_ids,
                 "ip": self.ip,
                 "latitude": self.latitude,
                 "longitude": self.longitude,
                 "maxTravelDistanceKm": self.max_travel_distance_km,
                 "maxBacklogSize": self.max_backlog_size,
+                "available": self.available,
             }
         )
 
@@ -664,13 +951,46 @@ class PatchWorker:
 
 
 @dataclass
+class WorkerTeam:
+    """One team membership as it appears on a worker's detail record."""
+
+    team_id: str
+    key: str
+    name: str
+    color: str | None = None
+    # 'member' | 'lead'
+    role: str = "member"
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTeam:
+        return cls(
+            team_id=data.get("teamId", ""),
+            key=data.get("key", ""),
+            name=data.get("name", ""),
+            color=data.get("color"),
+            role=data.get("role", "member"),
+        )
+
+
+@dataclass
 class WorkerDetail:
     id: str
     tags: list[str] = field(default_factory=list)
     routing_weights: dict[str, float] | None = None
+    # Which entries of routing_weights the learning layer owns, and when it last wrote them —
+    # the difference between "an operator vetoed this tag" and "the model did".
+    learned_routing_weights: dict[str, float] | None = None
+    # What routing_weights held before the last sync, restorable via learning.revert_weights()
+    routing_weights_snapshot: dict[str, float] | None = None
+    learned_routing_weights_synced_at: int | None = None
     skills: list[WorkerSkill] | None = None
+    teams: list[WorkerTeam] | None = None
     max_backlog_size: int | None = None
     available: bool = True
+    # Why they are unavailable when it is not simply "off shift": an invite nobody accepted,
+    # or a QR join waiting on operator approval. Both must read as themselves, not as "paused".
+    invite_pending: bool = False
+    pending_approval: bool = False
     queue_depth: int = 0
 
     @classmethod
@@ -679,9 +999,15 @@ class WorkerDetail:
             id=data["id"],
             tags=list(data.get("tags") or []),
             routing_weights=data.get("routingWeights"),
+            learned_routing_weights=data.get("learnedRoutingWeights"),
+            routing_weights_snapshot=data.get("routingWeightsSnapshot"),
+            learned_routing_weights_synced_at=_int_or_none(data.get("learnedRoutingWeightsSyncedAt")),
             skills=_each_or_none(data, "skills", WorkerSkill.from_json),
+            teams=_each_or_none(data, "teams", WorkerTeam.from_json),
             max_backlog_size=_int_or_none(data.get("maxBacklogSize")),
             available=bool(data.get("available", True)),
+            invite_pending=bool(data.get("invitePending", False)),
+            pending_approval=bool(data.get("pendingApproval", False)),
             queue_depth=int(data.get("queueDepth", 0)),
         )
 
@@ -1276,9 +1602,7 @@ class LearningFeedbackResult:
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> LearningFeedbackResult:
-        return cls(
-            task_id=data.get("taskId", ""), ok=bool(data.get("ok", False)), error=data.get("error")
-        )
+        return cls(task_id=data.get("taskId", ""), ok=bool(data.get("ok", False)), error=data.get("error"))
 
 
 # ─────────────────────────────── notifications ───────────────────────────────
@@ -1426,6 +1750,9 @@ class WorkerLoad:
     backlog: int
     max_backlog_size: int
     available: bool
+    # Same distinction as on WorkerDetail: not-yet-accepted invite, or a join awaiting approval
+    invite_pending: bool = False
+    pending_approval: bool = False
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerLoad:
@@ -1434,6 +1761,8 @@ class WorkerLoad:
             backlog=int(data.get("backlog", 0)),
             max_backlog_size=int(data.get("maxBacklogSize", 0)),
             available=bool(data.get("available", False)),
+            invite_pending=bool(data.get("invitePending", False)),
+            pending_approval=bool(data.get("pendingApproval", False)),
         )
 
 
@@ -1548,11 +1877,35 @@ class StatsTimeseriesResult:
 
 @dataclass
 class WorkerProductivity:
+    """One worker's window report: what they finished, how they responded, and how long they worked.
+
+    Three sources merged server-side — the task archive (throughput and handle
+    times), the synced day counters (offers/accepts/rejections), and the shift
+    log (`on_shift_ms` less overlapping breaks = `working_ms`). Measured facts,
+    never a score.
+    """
+
     worker_id: str
     completed: int
     cancelled: int
     avg_wait_ms: float | None = None
     avg_handle_ms: float | None = None
+    p50_handle_ms: float | None = None
+    p95_handle_ms: float | None = None
+    offered: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    failed: int = 0
+    expired: int = 0
+    released: int = 0
+    #: accepted / offered over the window; None before any offer, never 0.
+    acceptance_rate: float | None = None
+    on_shift_ms: int = 0
+    break_ms: int = 0
+    working_ms: int = 0
+    shift_count: int = 0
+    #: Handle time ÷ worked time. May exceed 1 for overlapping tasks.
+    utilization: float | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerProductivity:
@@ -1562,6 +1915,20 @@ class WorkerProductivity:
             cancelled=int(data.get("cancelled", 0)),
             avg_wait_ms=_float_or_none(data.get("avgWaitMs")),
             avg_handle_ms=_float_or_none(data.get("avgHandleMs")),
+            p50_handle_ms=_float_or_none(data.get("p50HandleMs")),
+            p95_handle_ms=_float_or_none(data.get("p95HandleMs")),
+            offered=int(data.get("offered", 0)),
+            accepted=int(data.get("accepted", 0)),
+            rejected=int(data.get("rejected", 0)),
+            failed=int(data.get("failed", 0)),
+            expired=int(data.get("expired", 0)),
+            released=int(data.get("released", 0)),
+            acceptance_rate=_float_or_none(data.get("acceptanceRate")),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_ms=int(data.get("breakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+            shift_count=int(data.get("shiftCount", 0)),
+            utilization=_float_or_none(data.get("utilization")),
         )
 
 
@@ -1577,6 +1944,79 @@ class WorkerStatsResult:
             from_=data.get("from", ""),
             to=data.get("to", ""),
             workers=_each(data, "workers", WorkerProductivity.from_json),
+        )
+
+
+@dataclass
+class WorkerStatsQuery:
+    """Window plus an optional crew filter for the per-worker productivity report."""
+
+    from_: str | None = None  # ISO-8601
+    to: str | None = None  # ISO-8601
+    bucket: str | None = None  # 'hour' | 'day'
+    team_id: str | None = None
+
+    def to_params(self) -> dict[str, str]:
+        return params({"from": self.from_, "to": self.to, "bucket": self.bucket, "teamId": self.team_id})
+
+
+@dataclass
+class WorkerTimeseriesBucket(StatsTimeseriesBucket):
+    """One bucket of a single worker's series.
+
+    Worked time and lifecycle counters are day-grained, so they are present only
+    on `bucket='day'` responses — None on hour buckets rather than zero, because
+    "not measured at this resolution" is not "measured as nothing".
+    """
+
+    on_shift_ms: int | None = None
+    break_ms: int | None = None
+    working_ms: int | None = None
+    offered: int | None = None
+    accepted: int | None = None
+    rejected: int | None = None
+    failed: int | None = None
+    expired: int | None = None
+    released: int | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeseriesBucket:
+        return cls(
+            bucket_start=data.get("bucketStart", ""),
+            completed=int(data.get("completed", 0)),
+            cancelled=int(data.get("cancelled", 0)),
+            avg_wait_ms=_float_or_none(data.get("avgWaitMs")),
+            p50_wait_ms=_float_or_none(data.get("p50WaitMs")),
+            p95_wait_ms=_float_or_none(data.get("p95WaitMs")),
+            avg_handle_ms=_float_or_none(data.get("avgHandleMs")),
+            on_shift_ms=_int_or_none(data.get("onShiftMs")),
+            break_ms=_int_or_none(data.get("breakMs")),
+            working_ms=_int_or_none(data.get("workingMs")),
+            offered=_int_or_none(data.get("offered")),
+            accepted=_int_or_none(data.get("accepted")),
+            rejected=_int_or_none(data.get("rejected")),
+            failed=_int_or_none(data.get("failed")),
+            expired=_int_or_none(data.get("expired")),
+            released=_int_or_none(data.get("released")),
+        )
+
+
+@dataclass
+class WorkerTimeseriesResult:
+    worker_id: str
+    from_: str
+    to: str
+    bucket: str = "hour"
+    buckets: list[WorkerTimeseriesBucket] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeseriesResult:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            from_=data.get("from", ""),
+            to=data.get("to", ""),
+            bucket=data.get("bucket", "hour"),
+            buckets=_each(data, "buckets", WorkerTimeseriesBucket.from_json),
         )
 
 
@@ -1709,10 +2149,14 @@ class WorkerSessionToken:
     """A ``wt_`` bearer token scoped to exactly one worker."""
 
     token: str
+    # ISO-8601 moment this token stops working. FivexerWorker uses it to rotate ahead of expiry;
+    # absent on servers predating the refresh endpoint, which is why it is optional rather than
+    # defaulted to a time — a made-up expiry would rotate either far too early or never.
+    expires_at: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerSessionToken:
-        return cls(token=data.get("token", ""))
+        return cls(token=data.get("token", ""), expires_at=data.get("expiresAt"))
 
 
 @dataclass
@@ -1805,7 +2249,12 @@ class WorkerMetricsToday:
     break_count: int = 0
     total_break_ms: int = 0
     longest_break_ms: int = 0
+    #: Real worked time (shift minus breaks) once the shift log has today's
+    #: rows; older servers report the since-midnight approximation instead.
     working_ms: int = 0
+    #: Additive — absent on servers predating the shift log.
+    on_shift_ms: int = 0
+    shift_count: int = 0
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerMetricsToday:
@@ -1817,6 +2266,8 @@ class WorkerMetricsToday:
             total_break_ms=int(data.get("totalBreakMs", 0)),
             longest_break_ms=int(data.get("longestBreakMs", 0)),
             working_ms=int(data.get("workingMs", 0)),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            shift_count=int(data.get("shiftCount", 0)),
         )
 
 
@@ -2116,6 +2567,176 @@ class WorkerMetricsWindow:
             days=_each(data, "days", WorkerMetricsWindowDay.from_json),
             median_wait_ms=_int_or_none(data.get("medianWaitMs")),
             median_cycle_ms=_int_or_none(data.get("medianCycleMs")),
+        )
+
+
+@dataclass
+class WorkerMetricsDay:
+    """Today's recorded time and throughput for one worker (operator plane)."""
+
+    since: str = ""
+    completed_tasks: int = 0
+    shift_count: int = 0
+    on_shift_ms: int = 0
+    break_count: int = 0
+    total_break_ms: int = 0
+    longest_break_ms: int = 0
+    working_ms: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerMetricsDay:
+        return cls(
+            since=data.get("since", ""),
+            completed_tasks=int(data.get("completedTasks", 0)),
+            shift_count=int(data.get("shiftCount", 0)),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_count=int(data.get("breakCount", 0)),
+            total_break_ms=int(data.get("totalBreakMs", 0)),
+            longest_break_ms=int(data.get("longestBreakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+        )
+
+
+@dataclass
+class WorkerMetricsPeriod:
+    """A worker's rolling window: recorded time, throughput and response counters."""
+
+    from_: str = ""
+    to: str = ""
+    #: None when the deployment keeps no task history at all — distinct from an
+    #: empty list, which means "history exists and this worker finished nothing".
+    #: The other ports preserve the same distinction.
+    days: list[WorkerMetricsWindowDay] | None = None
+    median_wait_ms: int | None = None
+    median_cycle_ms: int | None = None
+    shift_count: int = 0
+    on_shift_ms: int = 0
+    break_ms: int = 0
+    working_ms: int = 0
+    offered: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    completed: int = 0
+    failed: int = 0
+    expired: int = 0
+    released: int = 0
+    #: None before any offer, never 0 — a rate over nothing is not zero.
+    acceptance_rate: float | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerMetricsPeriod:
+        return cls(
+            from_=data.get("from", ""),
+            to=data.get("to", ""),
+            days=(None if data.get("days") is None else _each(data, "days", WorkerMetricsWindowDay.from_json)),
+            median_wait_ms=_int_or_none(data.get("medianWaitMs")),
+            median_cycle_ms=_int_or_none(data.get("medianCycleMs")),
+            shift_count=int(data.get("shiftCount", 0)),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_ms=int(data.get("breakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+            offered=int(data.get("offered", 0)),
+            accepted=int(data.get("accepted", 0)),
+            rejected=int(data.get("rejected", 0)),
+            completed=int(data.get("completed", 0)),
+            failed=int(data.get("failed", 0)),
+            expired=int(data.get("expired", 0)),
+            released=int(data.get("released", 0)),
+            acceptance_rate=_float_or_none(data.get("acceptanceRate")),
+        )
+
+
+@dataclass
+class WorkerMetrics:
+    """One worker's recorded time and throughput: today, plus a rolling window.
+
+    The operator-plane mirror of what the worker sees in their own portal —
+    same numbers on both planes, deliberately.
+    """
+
+    worker_id: str
+    today: WorkerMetricsDay = field(default_factory=WorkerMetricsDay)
+    window: WorkerMetricsPeriod = field(default_factory=WorkerMetricsPeriod)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerMetrics:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            today=WorkerMetricsDay.from_json(data.get("today") or {}),
+            window=WorkerMetricsPeriod.from_json(data.get("window") or {}),
+        )
+
+
+@dataclass
+class WorkerTimeEntry:
+    """One recorded stretch of a worker's time — a shift, or a break inside one.
+
+    `end_reason` 'timeout' means the platform clocked out an unattended worker
+    that went silent past its declared liveness contract.
+    """
+
+    type: str  # 'shift' | 'break'
+    started_at: str = ""
+    ended_at: str | None = None
+    duration_ms: int = 0
+    #: Shifts only: 'portal' | 'operator' | 'supervisor'.
+    source: str | None = None
+    #: Shifts only: 'manual' | 'timeout' | 'removed'; None while still open.
+    end_reason: str | None = None
+    #: Breaks only: the worker's stated reason.
+    reason: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeEntry:
+        return cls(
+            type=data.get("type", ""),
+            started_at=data.get("startedAt", ""),
+            ended_at=data.get("endedAt"),
+            duration_ms=int(data.get("durationMs", 0)),
+            source=data.get("source"),
+            end_reason=data.get("endReason"),
+            reason=data.get("reason"),
+        )
+
+
+@dataclass
+class WorkerTimeTotals:
+    shift_count: int = 0
+    on_shift_ms: int = 0
+    break_count: int = 0
+    break_ms: int = 0
+    #: on_shift_ms − break_ms: breaks are time inside a shift.
+    working_ms: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeTotals:
+        return cls(
+            shift_count=int(data.get("shiftCount", 0)),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_count=int(data.get("breakCount", 0)),
+            break_ms=int(data.get("breakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+        )
+
+
+@dataclass
+class WorkerTimeEntriesResult:
+    """The recorded shift and break log for a window — the working-time record."""
+
+    worker_id: str
+    from_: str = ""
+    to: str = ""
+    entries: list[WorkerTimeEntry] = field(default_factory=list)
+    totals: WorkerTimeTotals = field(default_factory=WorkerTimeTotals)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeEntriesResult:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            from_=data.get("from", ""),
+            to=data.get("to", ""),
+            entries=_each(data, "entries", WorkerTimeEntry.from_json),
+            totals=WorkerTimeTotals.from_json(data.get("totals") or {}),
         )
 
 
@@ -2679,9 +3300,7 @@ class UpdateWorkerIdentity:
     status: str | None = None  # 'active' | 'revoked'
 
     def to_json(self) -> dict[str, Any]:
-        payload = compact(
-            {"label": self.label, "pin": self.pin, "status": self.status, "email": self.email}
-        )
+        payload = compact({"label": self.label, "pin": self.pin, "status": self.status, "email": self.email})
         if self.email is CLEAR:
             payload["email"] = None
         return payload
@@ -2884,3 +3503,39 @@ class QuotaInfo:
         if not any(value is not None for value in found.values()):
             return None
         return cls(**{attr: int(value) for attr, value in found.items() if value is not None})
+
+
+@dataclass
+class VoiceIceServer:
+    """**Experimental — voice is not production-ready.** May change or be withdrawn in a patch
+    release; do not build on it yet.
+
+    One STUN/TURN server, shaped for the browser's ``RTCIceServer``. Unlike the console's read
+    view this *does* carry ``credential``: a worker or supervisor about to place a call needs the
+    TURN secret to authenticate to the relay, so the two reads differ deliberately.
+    """
+
+    # A single URL or a list of them, exactly as the browser API accepts
+    urls: str | list[str]
+    username: str | None = None
+    credential: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> VoiceIceServer:
+        urls = data.get("urls", "")
+        return cls(
+            urls=list(urls) if isinstance(urls, list) else urls,
+            username=data.get("username"),
+            credential=data.get("credential"),
+        )
+
+
+@dataclass
+class VoiceIceServers:
+    """**Experimental** — see :class:`VoiceIceServer`."""
+
+    ice_servers: list[VoiceIceServer] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> VoiceIceServers:
+        return cls(ice_servers=_each(data, "iceServers", VoiceIceServer.from_json))

@@ -17,9 +17,7 @@ SKILL_BODY = {
 def test_defining_a_skill_returns_the_stored_record(server, client):
     server.set_response(json_response(201, SKILL_BODY))
 
-    skill = client.skills.create(
-        UpsertSkill(key="refunds", name="Refunds", description="Handles refund requests")
-    )
+    skill = client.skills.create(UpsertSkill(key="refunds", name="Refunds", description="Handles refund requests"))
 
     assert server.last.url.path == "/v1/skills"
     assert (skill.id, skill.key, skill.name) == ("skl_1", "refunds", "Refunds")

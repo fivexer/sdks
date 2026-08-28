@@ -18,8 +18,11 @@ final class Team
     {
     }
 
-    public function presence(): TeamPresence
+    /** @param string|null $teamId narrow the view to one crew, or null for the whole workspace */
+    public function presence(?string $teamId = null): TeamPresence
     {
-        return TeamPresence::fromArray($this->client->request('GET', '/team/presence') ?? []);
+        return TeamPresence::fromArray(
+            $this->client->request('GET', '/team/presence', null, ['teamId' => $teamId]) ?? []
+        );
     }
 }

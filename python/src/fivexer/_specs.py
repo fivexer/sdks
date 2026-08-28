@@ -50,10 +50,12 @@ from .models import (
     UpsertSkill,
     UpsertTeam,
     UpsertWorker,
+    WorkerCreateAttachment,
     WorkerDeviceInput,
     WorkerLocation,
     WorkerLogin,
     WorkerSkillLevel,
+    WorkerStatsQuery,
     WorkflowDefinitionInput,
     compact,
     params,
@@ -116,9 +118,7 @@ def tasks_reject(task_id: str, worker_id: str) -> RequestSpec:
     return RequestSpec("POST", f"/tasks/{enc(task_id)}/reject", body={"workerId": worker_id})
 
 
-def tasks_complete(
-    task_id: str, worker_id: str, result: Mapping[str, Any] | None = None
-) -> RequestSpec:
+def tasks_complete(task_id: str, worker_id: str, result: Mapping[str, Any] | None = None) -> RequestSpec:
     body = compact({"result": None if result is None else dict(result)})
     body["workerId"] = worker_id
     return RequestSpec("POST", f"/tasks/{enc(task_id)}/complete", body=body)
@@ -171,6 +171,21 @@ def comments_remove(task_id: str, comment_id: str) -> RequestSpec:
 # ─────────────────────────────── attachments ───────────────────────────────
 
 
+def tasks_recurring_list() -> RequestSpec:
+    return RequestSpec("GET", "/tasks/recurring")
+
+
+def tasks_recurring_remove(template_id: str, drop_scheduled: bool | None = None) -> RequestSpec:
+    # `dropScheduled` decides the fate of occurrences already cut from the template. Sent only
+    # when asked for: the server's default is to leave them alone, and echoing `false` would
+    # make a caller who never mentioned them look like one who considered and declined.
+    return RequestSpec(
+        "DELETE",
+        f"/tasks/recurring/{enc(template_id)}",
+        query=params({"dropScheduled": "true" if drop_scheduled else None}),
+    )
+
+
 def attachments_create(task_id: str, attachment: CreateAttachment) -> RequestSpec:
     return RequestSpec("POST", f"/tasks/{enc(task_id)}/attachments", body=body_of(attachment, CreateAttachment))
 
@@ -210,9 +225,7 @@ def workers_patch(worker_id: str, patch: PatchWorker) -> RequestSpec:
     return RequestSpec("PATCH", f"/workers/{enc(worker_id)}", body=body_of(patch, PatchWorker))
 
 
-def workers_set_availability(
-    worker_id: str, available: bool, release_backlog: bool = False
-) -> RequestSpec:
+def workers_set_availability(worker_id: str, available: bool, release_backlog: bool = False) -> RequestSpec:
     """`releaseBacklog` is only valid when pausing, so it is emitted only when actually set."""
     body: dict[str, Any] = {"available": available}
     if release_backlog:
@@ -222,6 +235,14 @@ def workers_set_availability(
 
 def workers_queue(worker_id: str) -> RequestSpec:
     return RequestSpec("GET", f"/workers/{enc(worker_id)}/queue")
+
+
+def workers_metrics(worker_id: str, window: str | None = None) -> RequestSpec:
+    return RequestSpec("GET", f"/workers/{enc(worker_id)}/metrics", query=params({"window": window}))
+
+
+def workers_time_entries(worker_id: str, from_: str | None = None, to: str | None = None) -> RequestSpec:
+    return RequestSpec("GET", f"/workers/{enc(worker_id)}/time-entries", query=params({"from": from_, "to": to}))
 
 
 def workers_remove(worker_id: str) -> RequestSpec:
@@ -331,12 +352,45 @@ def learning_worker_stats(worker_id: str) -> RequestSpec:
     return RequestSpec("GET", f"/learning/workers/{enc(worker_id)}")
 
 
-def learning_preview_weights(worker_id: str | None = None) -> RequestSpec:
-    return RequestSpec("GET", "/learning/weights/preview", query=params({"workerId": worker_id}))
+def learning_preview_weights(
+    worker_id: str | None = None,
+    override_manual: bool | None = None,
+    include_unexplored_tags: bool | None = None,
+) -> RequestSpec:
+    # Both flags default off server-side, and both widen what a sync would write — one over an
+    # operator's hand-set weights, the other onto tags with no reward history. Sending them only
+    # when set keeps "I did not ask" distinguishable from "I asked for the default".
+    return RequestSpec(
+        "GET",
+        "/learning/weights/preview",
+        query=params(
+            {
+                "workerId": worker_id,
+                "overrideManual": None if override_manual is None else str(override_manual).lower(),
+                "includeUnexploredTags": (
+                    None if include_unexplored_tags is None else str(include_unexplored_tags).lower()
+                ),
+            }
+        ),
+    )
 
 
-def learning_apply_weights(worker_ids: list[str] | None = None) -> RequestSpec:
-    return RequestSpec("POST", "/learning/weights/apply", body=compact({"workerIds": worker_ids}))
+def learning_apply_weights(
+    worker_ids: list[str] | None = None,
+    override_manual: bool | None = None,
+    include_unexplored_tags: bool | None = None,
+) -> RequestSpec:
+    return RequestSpec(
+        "POST",
+        "/learning/weights/apply",
+        body=compact(
+            {
+                "workerIds": worker_ids,
+                "overrideManual": override_manual,
+                "includeUnexploredTags": include_unexplored_tags,
+            }
+        ),
+    )
 
 
 def learning_feedback(task_id: str, signals: Mapping[str, float]) -> RequestSpec:
@@ -414,16 +468,33 @@ def stats_timeseries(query: StatsWindowQuery | None) -> RequestSpec:
     return RequestSpec("GET", "/stats/timeseries", query=(query or StatsWindowQuery()).to_params())
 
 
-def stats_workers(query: StatsWindowQuery | None) -> RequestSpec:
-    return RequestSpec("GET", "/stats/workers", query=(query or StatsWindowQuery()).to_params())
+def stats_workers(query: WorkerStatsQuery | StatsWindowQuery | None) -> RequestSpec:
+    return RequestSpec("GET", "/stats/workers", query=(query or WorkerStatsQuery()).to_params())
 
 
-def team_presence() -> RequestSpec:
-    return RequestSpec("GET", "/team/presence")
+def stats_worker_timeseries(worker_id: str, query: StatsWindowQuery | None) -> RequestSpec:
+    return RequestSpec(
+        "GET",
+        f"/stats/workers/{enc(worker_id)}/timeseries",
+        query=(query or StatsWindowQuery()).to_params(),
+    )
 
 
-def breaks_metrics(from_: str | None = None, to: str | None = None) -> RequestSpec:
-    return RequestSpec("GET", "/breaks/metrics", query=params({"from": from_, "to": to}))
+def team_presence(team_id: str | None = None) -> RequestSpec:
+    return RequestSpec("GET", "/team/presence", query=params({"teamId": team_id}))
+
+
+def breaks_metrics(
+    from_: str | None = None,
+    to: str | None = None,
+    team_id: str | None = None,
+    worker_id: str | None = None,
+) -> RequestSpec:
+    return RequestSpec(
+        "GET",
+        "/breaks/metrics",
+        query=params({"from": from_, "to": to, "teamId": team_id, "workerId": worker_id}),
+    )
 
 
 # ─────────────────────────────── worker portal plane ───────────────────────────────
@@ -449,9 +520,7 @@ def worker_task_action(task_id: str, action: str, worker_id: str) -> RequestSpec
     return RequestSpec("POST", f"/portal/tasks/{enc(task_id)}/{action}", body={"workerId": worker_id})
 
 
-def worker_complete(
-    task_id: str, worker_id: str, result: Mapping[str, Any] | None = None
-) -> RequestSpec:
+def worker_complete(task_id: str, worker_id: str, result: Mapping[str, Any] | None = None) -> RequestSpec:
     body = compact({"result": None if result is None else dict(result)})
     body["workerId"] = worker_id
     return RequestSpec("POST", f"/portal/tasks/{enc(task_id)}/complete", body=body)
@@ -471,6 +540,10 @@ def worker_breaks_today() -> RequestSpec:
 
 def worker_metrics_today() -> RequestSpec:
     return RequestSpec("GET", "/portal/metrics/today")
+
+
+def worker_time_entries() -> RequestSpec:
+    return RequestSpec("GET", "/portal/me/time-entries")
 
 
 def worker_team_presence() -> RequestSpec:
@@ -571,15 +644,11 @@ def identities_resend_invite(worker_id: str) -> RequestSpec:
 
 
 def identities_create(worker_id: str, identity: CreateWorkerIdentity) -> RequestSpec:
-    return RequestSpec(
-        "POST", f"/workers/{enc(worker_id)}/identity", body=body_of(identity, CreateWorkerIdentity)
-    )
+    return RequestSpec("POST", f"/workers/{enc(worker_id)}/identity", body=body_of(identity, CreateWorkerIdentity))
 
 
 def identities_update(worker_id: str, patch: UpdateWorkerIdentity) -> RequestSpec:
-    return RequestSpec(
-        "PATCH", f"/workers/{enc(worker_id)}/identity", body=body_of(patch, UpdateWorkerIdentity)
-    )
+    return RequestSpec("PATCH", f"/workers/{enc(worker_id)}/identity", body=body_of(patch, UpdateWorkerIdentity))
 
 
 def identities_remove(worker_id: str) -> RequestSpec:
@@ -628,8 +697,14 @@ def worker_me() -> RequestSpec:
     return RequestSpec("GET", "/portal/me")
 
 
-def worker_set_availability(available: bool) -> RequestSpec:
-    return RequestSpec("POST", "/portal/me/availability", body={"available": available})
+def worker_set_availability(available: bool, stale_after_ms: int | None = None) -> RequestSpec:
+    body: dict[str, Any] = {"available": available}
+    # Only ever sent alongside `available: true`, and only by unattended
+    # workers: it authorises the platform to clock this worker out after that
+    # much silence. A human client must never send it.
+    if available and stale_after_ms is not None:
+        body["staleAfterMs"] = stale_after_ms
+    return RequestSpec("POST", "/portal/me/availability", body=body)
 
 
 def worker_change_pin(change: ChangePin) -> RequestSpec:
@@ -641,9 +716,7 @@ def worker_skill_catalog() -> RequestSpec:
 
 
 def worker_set_skills(skills: list[WorkerSkillLevel]) -> RequestSpec:
-    return RequestSpec(
-        "PUT", "/portal/me/skills", body={"skills": [body_of(s, WorkerSkillLevel) for s in skills]}
-    )
+    return RequestSpec("PUT", "/portal/me/skills", body={"skills": [body_of(s, WorkerSkillLevel) for s in skills]})
 
 
 def worker_metrics_window(window: str = "7d") -> RequestSpec:
@@ -652,6 +725,31 @@ def worker_metrics_window(window: str = "7d") -> RequestSpec:
 
 def worker_update_location(location: WorkerLocation) -> RequestSpec:
     return RequestSpec("POST", "/portal/workers/me/location", body=body_of(location, WorkerLocation))
+
+
+def worker_attachments_create(task_id: str, attachment: WorkerCreateAttachment) -> RequestSpec:
+    return RequestSpec(
+        "POST",
+        f"/portal/tasks/{enc(task_id)}/attachments",
+        body=body_of(attachment, WorkerCreateAttachment),
+    )
+
+
+def worker_attachments_confirm(task_id: str, attachment_id: str) -> RequestSpec:
+    return RequestSpec("POST", f"/portal/tasks/{enc(task_id)}/attachments/{enc(attachment_id)}/confirm")
+
+
+def worker_attachments_list(task_id: str) -> RequestSpec:
+    return RequestSpec("GET", f"/portal/tasks/{enc(task_id)}/attachments")
+
+
+def worker_attachments_download(task_id: str, attachment_id: str) -> RequestSpec:
+    return RequestSpec("GET", f"/portal/tasks/{enc(task_id)}/attachments/{enc(attachment_id)}/download")
+
+
+def worker_voice_ice() -> RequestSpec:
+    """**Experimental — voice is not production-ready.**"""
+    return RequestSpec("GET", "/portal/voice/ice")
 
 
 def worker_comments_list(task_id: str, cursor: str | None, limit: int | None) -> RequestSpec:
@@ -675,9 +773,7 @@ def worker_push_config() -> RequestSpec:
 
 
 def worker_push_subscribe(subscription: PushSubscriptionInput) -> RequestSpec:
-    return RequestSpec(
-        "POST", "/portal/push/subscriptions", body=body_of(subscription, PushSubscriptionInput)
-    )
+    return RequestSpec("POST", "/portal/push/subscriptions", body=body_of(subscription, PushSubscriptionInput))
 
 
 def worker_push_unsubscribe(endpoint: str) -> RequestSpec:
@@ -694,9 +790,7 @@ def supervisor_entry() -> RequestSpec:
 
 
 def supervisor_accept(invite: AcceptSupervisorInvite) -> RequestSpec:
-    return RequestSpec(
-        "POST", "/supervisor-auth/accept", body=body_of(invite, AcceptSupervisorInvite)
-    )
+    return RequestSpec("POST", "/supervisor-auth/accept", body=body_of(invite, AcceptSupervisorInvite))
 
 
 def supervisor_logout() -> RequestSpec:
@@ -717,9 +811,7 @@ def supervisor_unpark(task_id: str, options: UnparkTask | None = None) -> Reques
 
 
 def supervisor_set_priority(task_id: str, priority: float) -> RequestSpec:
-    return RequestSpec(
-        "POST", f"/supervisor/tasks/{enc(task_id)}/priority", body={"priority": priority}
-    )
+    return RequestSpec("POST", f"/supervisor/tasks/{enc(task_id)}/priority", body={"priority": priority})
 
 
 def supervisor_assign(task_id: str, worker_id: str, force: bool | None = None) -> RequestSpec:
@@ -728,12 +820,15 @@ def supervisor_assign(task_id: str, worker_id: str, force: bool | None = None) -
     return RequestSpec("POST", f"/supervisor/tasks/{enc(task_id)}/assign", body=body)
 
 
-def supervisor_set_availability(
-    worker_id: str, available: bool, release_backlog: bool | None = None
-) -> RequestSpec:
+def supervisor_set_availability(worker_id: str, available: bool, release_backlog: bool | None = None) -> RequestSpec:
     body = compact({"releaseBacklog": release_backlog})
     body["available"] = available
     return RequestSpec("POST", f"/supervisor/workers/{enc(worker_id)}/availability", body=body)
+
+
+def supervisor_voice_ice() -> RequestSpec:
+    """**Experimental — voice is not production-ready.**"""
+    return RequestSpec("GET", "/supervisor/voice/ice")
 
 
 def supervisor_push_config() -> RequestSpec:
@@ -741,9 +836,7 @@ def supervisor_push_config() -> RequestSpec:
 
 
 def supervisor_push_subscribe(subscription: PushSubscriptionInput) -> RequestSpec:
-    return RequestSpec(
-        "POST", "/supervisor/push/subscriptions", body=body_of(subscription, PushSubscriptionInput)
-    )
+    return RequestSpec("POST", "/supervisor/push/subscriptions", body=body_of(subscription, PushSubscriptionInput))
 
 
 def supervisor_push_unsubscribe(endpoint: str) -> RequestSpec:

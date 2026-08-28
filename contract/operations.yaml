@@ -149,6 +149,27 @@ groups:
             response: "{ id, status: queued }"
             notes: Reset the clocks that parked it, or the next sweep parks it straight back.
 
+    - group: tasks.recurring
+      plane: workspace
+      operations:
+          - name: tasks.recurring.list
+            method: GET
+            path: /tasks/recurring
+            response: "{ recurring: RecurringTask[], count }"
+            notes: >-
+                Templates, soonest `nextAt` first. A template is never itself matchable and never
+                appears in tasks.list, tasks.scheduled or the queue stats — its occurrences do,
+                the moment the sweep cuts them.
+          - name: tasks.recurring.remove
+            method: DELETE
+            path: /tasks/recurring/{id}
+            query: "dropScheduled?"
+            response: void
+            notes: >-
+                204. Stops the template; occurrences already materialized live on unless
+                `dropScheduled=true`. 404 when no such template — removing one twice is not
+                idempotent, and a caller that treats it as such will mask a wrong id.
+
     - group: tasks.context
       plane: workspace
       operations:
@@ -256,6 +277,25 @@ groups:
             method: GET
             path: /workers/{id}/queue
             response: WorkerQueue
+          - name: workers.metrics
+            method: GET
+            path: /workers/{id}/metrics
+            query: "window?"
+            response: WorkerMetrics
+            notes: >-
+                The operator-plane mirror of the worker's own portal metrics: today plus a
+                rolling window (default `7d`, max `30d`). Worked time comes from the shift log
+                — shift time minus overlapping breaks — so both planes report the same figure.
+                `acceptanceRate` is null before any offer, never zero. Requires the control plane.
+          - name: workers.timeEntries
+            method: GET
+            path: /workers/{id}/time-entries
+            query: "from?, to?"
+            response: WorkerTimeEntriesResult
+            notes: >-
+                The recorded shift and break log for a window (default: the last 7 days). This
+                is the working-time record EU employers must keep (CJEU C-55/18). The API also
+                serves `format=csv`; SDKs wrap the JSON form only. Requires the control plane.
           - name: workers.remove
             method: DELETE
             path: /workers/{id}
@@ -625,20 +665,38 @@ groups:
           - name: history.workers
             method: GET
             path: /stats/workers
-            query: "from?, to?, bucket?"
+            query: "from?, to?, bucket?, teamId?"
             response: WorkerStatsResult
-            notes: Requires the control plane.
+            notes: >-
+                Requires the control plane. One row per worker, merging three sources: the task
+                archive (completed/cancelled, avg + p50/p95 handle), the synced day counters
+                (offered/accepted/rejected/failed/expired/released, acceptanceRate) and the shift
+                log (onShiftMs/breakMs/workingMs/shiftCount, utilization = handle ÷ worked).
+                The row set is their union, so a worker who was on shift and finished nothing
+                still appears with zeros.
+          - name: history.workerTimeseries
+            method: GET
+            path: /stats/workers/{workerId}/timeseries
+            query: "from?, to?, bucket?"
+            response: WorkerTimeseriesResult
+            notes: >-
+                Per-worker twin of history.timeseries. Worked time and lifecycle counters are
+                day-grained, so they appear only on `bucket=day` buckets — never on hour buckets.
+                Requires the control plane.
           - name: team.presence
             method: GET
             path: /team/presence
+            query: "teamId?"
             response: TeamPresence
             notes: Supervisor view of the same data workers see via the portal plane. Requires the control plane.
           - name: breaks.metrics
             method: GET
             path: /breaks/metrics
-            query: "from?, to?"
+            query: "from?, to?, teamId?, workerId?"
             response: WorkspaceBreakMetrics
-            notes: Requires the control plane.
+            notes: >-
+                Requires the control plane. With an explicit `to`, durations are clipped to the
+                window; without one, open breaks are measured to now.
 
     # ─────────────────────────── worker portal plane ───────────────────────────
     - group: worker.auth
@@ -709,6 +767,18 @@ groups:
             method: GET
             path: /portal/metrics/today
             response: WorkerMetricsToday
+            notes: >-
+                `workingMs` is real worked time (shift minus breaks) once the shift log has
+                today's rows; workers predating it keep the old since-midnight approximation.
+                `onShiftMs`/`shiftCount` are additive — absent from older servers.
+          - name: worker.timeEntries
+            method: GET
+            path: /portal/me/time-entries
+            response: WorkerTimeEntriesResult
+            notes: >-
+                The worker's own copy of the record an operator reads through
+                `workers.timeEntries` — fixed to the last 7 days, no parameters. That parity is
+                deliberate: it is what keeps the log a timesheet rather than surveillance.
           - name: worker.teamPresence
             method: GET
             path: /portal/team/presence
@@ -756,11 +826,16 @@ groups:
           - name: worker.setAvailability
             method: POST
             path: /portal/me/availability
-            body: "{ available }"
+            body: "{ available, staleAfterMs? }"
             response: "{ workerId, available }"
             notes: >-
                 Workers are created off shift, so this is what makes someone matchable at all.
                 403 `approval_pending` while an operator must still admit a QR-join worker.
+                `staleAfterMs` (60_000–86_400_000) is a liveness contract for **unattended**
+                workers only: the platform clocks the worker out and pauses routing after that
+                much silence, which is what stops a crashed process reading as available
+                forever. An interactive client must never send it — a person working away from
+                their phone is not a crashed process. Only meaningful with `available: true`.
           - name: worker.changePin
             method: POST
             path: /portal/me/pin
@@ -804,6 +879,55 @@ groups:
             path: /portal/tasks/{id}/comments
             body: "{ body }"
             response: "{ comment: Comment }"
+
+    - group: worker.attachments
+      plane: worker
+      operations:
+          - name: worker.attachments.create
+            method: POST
+            path: /portal/tasks/{id}/attachments
+            body: "{ filename, contentType, sizeBytes }"
+            response: "{ attachment: Attachment, upload: AttachmentUpload }"
+            notes: >-
+                The same storage core as the workspace plane's, minus the `uploadedBy` input —
+                on this plane the uploader is the session, so a worker cannot attribute a file
+                to anyone else.
+          - name: worker.attachments.confirm
+            method: POST
+            path: /portal/tasks/{id}/attachments/{attachmentId}/confirm
+            response: "{ attachment: Attachment }"
+          - name: worker.attachments.list
+            method: GET
+            path: /portal/tasks/{id}/attachments
+            response: "{ attachments: Attachment[] }"
+          - name: worker.attachments.download
+            method: GET
+            path: /portal/tasks/{id}/attachments/{attachmentId}/download
+            response: AttachmentDownload
+          - name: worker.attachments.upload
+            method: composite
+            path: "(create) → PUT {upload.url} → (confirm)"
+            response: "{ attachment: Attachment }"
+            notes: >-
+                DX helper, not an endpoint — the worker-plane twin of tasks.attachments.upload.
+      notes: >-
+          There is deliberately no `remove` on this plane. Files on a task are an operator's to
+          manage and a worker's only to add and read; a delete here would let a worker erase the
+          evidence of their own work.
+
+    - group: worker.voice
+      plane: worker
+      operations:
+          - name: worker.voiceIce
+            method: GET
+            path: /portal/voice/ice
+            response: "{ iceServers: VoiceIceServer[] }"
+            notes: >-
+                **Experimental — voice is not production-ready.** May change or be withdrawn in a
+                patch release. Fetched per call, never cached: a TURN credential is short-lived and
+                a stale one fails once the call is already ringing. 404 `voice_disabled` where the
+                workspace has voice switched off — a configuration fact, not an error to retry, and
+                not to be flattened into an empty server list.
 
     - group: worker.push
       plane: worker
@@ -918,6 +1042,17 @@ groups:
             notes: >-
                 Pausing never releases implicitly. `releaseBacklog` is the explicit redistribution
                 move and only *pending* work moves; accepted work stays with whoever accepted it.
+
+    - group: supervisor.voice
+      plane: supervisor
+      operations:
+          - name: supervisor.voiceIce
+            method: GET
+            path: /supervisor/voice/ice
+            response: "{ iceServers: VoiceIceServer[] }"
+            notes: >-
+                **Experimental — voice is not production-ready.** Same contract as the worker
+                plane's, against the supervisor session.
 
     - group: supervisor.push
       plane: supervisor

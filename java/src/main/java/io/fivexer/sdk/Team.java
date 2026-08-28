@@ -1,5 +1,6 @@
 package io.fivexer.sdk;
 
+import io.fivexer.sdk.internal.Json;
 import io.fivexer.sdk.model.TeamPresence;
 
 /**
@@ -16,6 +17,12 @@ public final class Team {
     }
 
     public TeamPresence presence() {
-        return client.request("GET", "/team/presence", null, null, TeamPresence.class, false);
+        return presence(null);
+    }
+
+    /** @param teamId narrow the view to one crew, or null for the whole workspace */
+    public TeamPresence presence(String teamId) {
+        return client.request("GET", "/team/presence", null, Json.query("teamId", teamId),
+                TeamPresence.class, false);
     }
 }

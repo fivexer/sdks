@@ -35,6 +35,20 @@ public class CreateTask {
     private Double maxDistanceKm;
     private Boolean requireGeo;   // exclude workers without coordinates
     private List<String> allowedCidrs;
+    // Hard skill gate in catalog terms — the typed twin of skillThresholds
+    private List<RequiredSkill> requiredSkills;
+    // Policies. Absent inherits the workspace default; see escalationNone()/slaNone() to opt out
+    private EscalationPolicy escalation;
+    private SlaPolicy sla;
+    private SchedulePolicy schedule;
+    private RecurrencePolicy recurrence;
+    private String teamId;
+    private String preferTeamId;
+    // Not serialised by Gson: these record the *request* for an explicit null, which toJson()
+    // writes onto the tree. A `transient` field is invisible to Gson, which is exactly right —
+    // the marker is SDK bookkeeping, never a wire field of its own.
+    private transient boolean escalationNull;
+    private transient boolean slaNull;
 
     public CreateTask(List<String> tags) {
         if (tags == null || tags.isEmpty()) {
@@ -58,6 +72,13 @@ public class CreateTask {
     public Double getMaxDistanceKm() { return maxDistanceKm; }
     public Boolean getRequireGeo() { return requireGeo; }
     public List<String> getAllowedCidrs() { return allowedCidrs; }
+    public List<RequiredSkill> getRequiredSkills() { return requiredSkills; }
+    public EscalationPolicy getEscalation() { return escalation; }
+    public SlaPolicy getSla() { return sla; }
+    public SchedulePolicy getSchedule() { return schedule; }
+    public RecurrencePolicy getRecurrence() { return recurrence; }
+    public String getTeamId() { return teamId; }
+    public String getPreferTeamId() { return preferTeamId; }
 
     public CreateTask id(String id) { this.id = id; return this; }
     public CreateTask priority(double priority) { this.priority = priority; return this; }
@@ -74,8 +95,58 @@ public class CreateTask {
     public CreateTask requireGeo(boolean requireGeo) { this.requireGeo = requireGeo; return this; }
     public CreateTask allowedCidrs(List<String> allowedCidrs) { this.allowedCidrs = allowedCidrs; return this; }
 
-    /** Serialises only the fields that were set, so the body matches the contract. */
+    /** Minimum catalog skill levels a worker must hold to be eligible. */
+    public CreateTask requiredSkills(List<RequiredSkill> requiredSkills) {
+        this.requiredSkills = requiredSkills;
+        return this;
+    }
+
+    /**
+     * Response clock for this task. Omitting it inherits the workspace default; to opt out of
+     * that default entirely, call {@link #escalationNone()} — an absent field and an explicit
+     * null are different instructions to the server.
+     */
+    public CreateTask escalation(EscalationPolicy escalation) { this.escalation = escalation; return this; }
+
+    /** Send {@code "escalation": null} — opt this task out of the workspace default. */
+    public CreateTask escalationNone() { this.escalation = null; this.escalationNull = true; return this; }
+
+    /** Completion clock, shelf life and rejection budget. Same inheritance rule as escalation. */
+    public CreateTask sla(SlaPolicy sla) { this.sla = sla; return this; }
+
+    /** Send {@code "sla": null} — opt this task out of the workspace default. */
+    public CreateTask slaNone() { this.sla = null; this.slaNull = true; return this; }
+
+    /** When this task may be offered. No workspace default to inherit — timestamps are absolute. */
+    public CreateTask schedule(SchedulePolicy schedule) { this.schedule = schedule; return this; }
+
+    /** Make this a standing template instead of a one-off. Mutually exclusive with a schedule. */
+    public CreateTask recurrence(RecurrencePolicy recurrence) { this.recurrence = recurrence; return this; }
+
+    /** Hard team gate: only members are eligible. Mutually exclusive with {@link #preferTeamId}. */
+    public CreateTask teamId(String teamId) { this.teamId = teamId; return this; }
+
+    /** Soft team preference: members rank first, everyone else stays eligible. */
+    public CreateTask preferTeamId(String preferTeamId) { this.preferTeamId = preferTeamId; return this; }
+
+    /**
+     * Serialises only the fields that were set, so the body matches the contract.
+     *
+     * <p>The two nullable policies are the exception to Gson's omit-nulls rule: an <em>absent</em>
+     * escalation or SLA inherits the workspace default, while an explicit null opts out of it.
+     * Gson cannot express the second, so the opt-out is written onto the tree afterwards.
+     */
     public String toJson() {
-        return Json.write(this);
+        if (!escalationNull && !slaNull) {
+            return Json.write(this);
+        }
+        com.google.gson.JsonObject body = Json.tree(this).getAsJsonObject();
+        if (escalationNull) {
+            body.add("escalation", com.google.gson.JsonNull.INSTANCE);
+        }
+        if (slaNull) {
+            body.add("sla", com.google.gson.JsonNull.INSTANCE);
+        }
+        return body.toString();
     }
 }

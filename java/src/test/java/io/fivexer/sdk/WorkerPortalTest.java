@@ -16,6 +16,7 @@ import io.fivexer.sdk.model.WorkerMetricsToday;
 import io.fivexer.sdk.model.WorkerQueue;
 import io.fivexer.sdk.model.WorkerSessionToken;
 import io.fivexer.sdk.model.WorkerTaskDetail;
+import io.fivexer.sdk.model.WorkerTimeEntriesResult;
 import java.util.List;
 import java.util.Map;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -361,6 +362,68 @@ class WorkerPortalTest extends MockServerBase {
         assertEquals(7, metrics.getCompletedTasks());
         assertEquals("agent_1", metrics.getWorkerId());
         assertEquals("2026-07-24T00:00:00Z", metrics.getSince());
+    }
+
+    @Test
+    void todays_metrics_also_report_shift_time_when_the_server_has_a_shift_log() throws Exception {
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"since\":\"2026-07-24T00:00:00Z\","
+                + "\"completedTasks\":7,\"breakCount\":1,\"totalBreakMs\":1800000,"
+                + "\"longestBreakMs\":1800000,\"workingMs\":27000000,\"onShiftMs\":28800000,"
+                + "\"shiftCount\":1}");
+
+        WorkerMetricsToday metrics = worker().metricsToday();
+
+        assertEquals(28800000L, metrics.getOnShiftMs());
+        assertEquals(1, metrics.getShiftCount());
+        assertEquals(27000000L, metrics.getWorkingMs());
+    }
+
+    @Test
+    void an_older_server_without_a_shift_log_reports_no_shift_time() throws Exception {
+        // onShiftMs/shiftCount are additive: absent means the deployment predates the shift log.
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"since\":\"x\",\"completedTasks\":0,"
+                + "\"breakCount\":0,\"totalBreakMs\":0,\"longestBreakMs\":0,\"workingMs\":100}");
+
+        WorkerMetricsToday metrics = worker().metricsToday();
+
+        assertEquals(0L, metrics.getOnShiftMs());
+        assertEquals(0, metrics.getShiftCount());
+    }
+
+    @Test
+    void a_worker_reads_their_own_time_log_with_no_parameters_to_narrow_it() throws Exception {
+        // Same record an operator reads — that parity is what keeps it a timesheet.
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"from\":\"2026-07-17T00:00:00Z\","
+                + "\"to\":\"2026-07-24T00:00:00Z\",\"entries\":["
+                + "{\"type\":\"shift\",\"startedAt\":\"2026-07-23T08:00:00Z\","
+                + "\"endedAt\":\"2026-07-23T16:00:00Z\",\"durationMs\":28800000,"
+                + "\"source\":\"portal\",\"endReason\":\"manual\"},"
+                + "{\"type\":\"break\",\"startedAt\":\"2026-07-23T11:30:00Z\","
+                + "\"endedAt\":\"2026-07-23T12:00:00Z\",\"durationMs\":1800000,"
+                + "\"reason\":\"lunch\"}],"
+                + "\"totals\":{\"shiftCount\":1,\"onShiftMs\":28800000,\"breakCount\":1,"
+                + "\"breakMs\":1800000,\"workingMs\":27000000}}");
+
+        WorkerTimeEntriesResult log = worker().timeEntries();
+
+        RecordedRequest request = takeRequest();
+        assertEquals("/v1/portal/me/time-entries", request.getPath());
+        assertEquals("GET", request.getMethod());
+        assertEquals("agent_1", log.getWorkerId());
+        assertEquals("shift", log.getEntries().get(0).getType());
+        assertEquals("manual", log.getEntries().get(0).getEndReason());
+        assertEquals("lunch", log.getEntries().get(1).getReason());
+        assertEquals(27000000L, log.getTotals().getWorkingMs());
+        assertEquals(1, log.getTotals().getBreakCount());
+        assertEquals(28800000L, log.getTotals().getOnShiftMs());
+        assertEquals(1800000L, log.getTotals().getBreakMs());
+        assertEquals(1, log.getTotals().getShiftCount());
+        assertEquals("2026-07-17T00:00:00Z", log.getFrom());
+        assertEquals("2026-07-24T00:00:00Z", log.getTo());
+        assertEquals("2026-07-23T08:00:00Z", log.getEntries().get(0).getStartedAt());
+        assertEquals("2026-07-23T16:00:00Z", log.getEntries().get(0).getEndedAt());
+        assertEquals(28800000L, log.getEntries().get(0).getDurationMs());
+        assertEquals("portal", log.getEntries().get(0).getSource());
     }
 
     @Test

@@ -51,7 +51,7 @@ $stats = $client->stats();
 | `$client->tasks()->context()` | `get` `set` `clear` |
 | `$client->tasks()->comments()` | `add` `list` `remove` |
 | `$client->tasks()->attachments()` | `create` `confirm` `list` `download` `remove` `upload` |
-| `$client->workers()` | `upsert` `list` `get` `patch` `setAvailability` `queue` `remove` |
+| `$client->workers()` | `upsert` `list` `get` `patch` `setAvailability` `queue` `metrics` `timeEntries` `remove` |
 | `$client->skills()` | `create` `list` `get` `patch` `remove` `suggest` |
 | `$client->teams()` | `create` `list` `get` `patch` `remove` `members` `setMembers` |
 | `$client->joinLinks()` | `create` `list` `revoke` |
@@ -62,11 +62,37 @@ $stats = $client->stats();
 | `$client->learning()` | `status` `workerStats` `previewWeights` `applyWeights` `revertWeights` `feedback` `reward` `feedbackBulk` `reset` |
 | `$client->notifications()->sequences()` | `list` `create` `get` `update` `remove` |
 | `$client->notifications()->channels()` | `list` `create` `get` `update` `remove` |
-| `$client->stats()` / `$client->history()` | `stats()` `slaStats()` `queueAudit()` `portal()` `timeseries` `workers` |
+| `$client->stats()` / `$client->history()` | `stats()` `slaStats()` `queueAudit()` `portal()` `timeseries` `workers` `workerTimeseries` |
 | `$client->team()` / `$client->breaks()` | `presence` `metrics` |
 
 `history()`, `team()` and `breaks()` need the control plane; a data-plane-only deployment throws
 `FivexerApiException` with `apiCode` `history_unavailable`.
+
+## Recorded time
+
+A shift is a recorded stretch of availability; breaks are time taken inside one, so worked time
+is shift time minus breaks. These are measured facts, not a rating, and nothing here feeds back
+into matching.
+
+```php
+$metrics = $client->workers()->metrics('agent_1', '7d');
+$metrics->today->onShiftMs;        // 8h on shift
+$metrics->today->workingMs;        // less the breaks inside it
+$metrics->window->acceptanceRate;  // null before any offer, never 0.0
+
+// The exportable working-time record (CJEU C-55/18), shifts and breaks in order
+$log = $client->workers()->timeEntries('agent_1');
+$log->entries[0]->endReason;       // 'timeout' -> the platform clocked out a silent unattended
+                                   // worker; null while the shift is still open
+$log->totals->workingMs;
+
+// One worker's series. Worked time and the lifecycle counters are day-grained, so they are
+// null on hour buckets rather than zero.
+$client->history()->workerTimeseries('agent_1', null, null, 'day');
+
+// Per-worker productivity, optionally narrowed to one crew
+$client->history()->workers(null, null, null, 'team_night');
+```
 
 ## Operator actions
 
@@ -107,6 +133,56 @@ $client->tasks()->comments()->add(
 $client->tasks()->attachments()->upload('task_8fk2', $pdfBytes, 'receipt.pdf', 'application/pdf');
 ```
 
+## Task policies
+
+Four policies ride on a task, each with its own clock. Omitting one inherits the workspace
+default; `escalationNone()` / `slaNone()` send an explicit null to opt out of that default —
+absent and null are different instructions, and the omit-nulls pass every other field goes
+through cannot express the second.
+
+```php
+use Fivexer\SDK\Model\EscalationPolicy;
+use Fivexer\SDK\Model\RecurrencePolicy;
+use Fivexer\SDK\Model\SchedulePolicy;
+use Fivexer\SDK\Model\SlaPolicy;
+
+$client->tasks()->create(
+    (new CreateTask(['billing']))
+        // the response clock: who gets it next when nobody answers
+        ->escalation(
+            (new EscalationPolicy(60000))
+                ->onNoResponse('block')
+                ->tiers([['billing'], ['billing', 'english']])
+                ->onExhausted('park')
+        )
+        // the completion clock, shelf life and rejection budget
+        ->sla((new SlaPolicy())->completeWithinMs(3600000)->maxRejections(3)->onExpire('park'))
+        // when it may be offered at all
+        ->schedule((new SchedulePolicy())->notBefore($startsAt)->notAfter($closesAt)->onMiss('park'))
+        ->teamId('team_1')            // hard gate; preferTeamId() only reorders
+);
+
+$client->tasks()->create((new CreateTask(['billing']))->slaNone());  // opt out of the default
+```
+
+A `recurrence` makes a standing **template** instead of a one-off. The template is never itself
+matchable and never appears in `tasks()->list()` or the queue stats — occurrences are cut from it
+one interval ahead of their window, aligned to `startAt + k × everyMs` so they never drift:
+
+```php
+$client->tasks()->create(
+    (new CreateTask(['ops']))
+        ->id('nightly-sweep')
+        ->recurrence((new RecurrencePolicy(86400000))->windowMs(3600000)->onMiss('park'))
+);
+
+foreach ($client->tasks()->recurring()->list() as $template) {
+    echo $template->id, ' next at ', $template->nextAt, PHP_EOL;
+}
+$client->tasks()->recurring()->remove('nightly-sweep');        // occurrences already cut live on
+$client->tasks()->recurring()->remove('nightly-sweep', true);  // ...unless you drop them too
+```
+
 ## Worker portal plane
 
 A worker works their own queue with a `wt_` session token. `login()` adopts both the token and
@@ -127,8 +203,19 @@ $worker->complete($detail->id, ['refunded' => true]);
 $worker->startBreak('lunch');
 $worker->endBreak();      // null when no break was open — a normal outcome, not an error
 $worker->metricsToday();
+$worker->timeEntries();   // their own copy of the record an operator reads
 $worker->teamPresence();
 ```
+
+An **unattended** worker — a daemon rather than a person — can attach a liveness contract when
+going on shift, so a crashed process stops reading as available:
+
+```php
+$worker->setAvailability(true, 900000);  // clock me out after 15 min of silence
+```
+
+Interactive clients must never send it: someone working away from their phone is not a crashed
+process. It is only meaningful alongside `available: true`, and the SDK sends it only then.
 
 A worker can also arrive without a password — through a QR join link or an emailed invite. Both
 mint a session, and the client adopts it, so the next call is already authenticated:
@@ -171,6 +258,24 @@ if ($worker->pushConfig()->enabled) {
 
 The token is scoped to exactly one worker and cannot reach task creation or worker management —
 calling an action before `login()` throws `worker_id_required` locally rather than guessing an id.
+
+### Files and voice on the worker plane
+
+A worker can attach files to their own tasks — how an unattended agent hands over a deliverable
+as a file rather than a chunked comment thread. Same storage core as the workspace plane, minus
+two things on purpose: the uploader comes from the session (no `workerId` to spoof), and there is
+no `remove`, because a worker who could delete files could erase the evidence of their own work.
+
+```php
+$worker->attachments()->upload('task_8fk2', $pdfBytes, 'report.pdf', 'application/pdf');
+$files = $worker->attachments()->list('task_8fk2');
+```
+
+`$worker->voiceIce()` and `$supervisor->voiceIce()` return the STUN/TURN servers for a call.
+**Experimental — voice is not production-ready**; the surface may change or be withdrawn in a
+patch release. Fetch it per call rather than caching: a TURN credential is short-lived, and a
+stale one fails at the point where the call is already ringing. A workspace with voice switched
+off answers 404 `voice_disabled` — a configuration fact, not an empty relay list to dial through.
 
 ## Operator onboarding
 

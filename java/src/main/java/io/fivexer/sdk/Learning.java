@@ -12,6 +12,7 @@ import io.fivexer.sdk.model.LearningStatus;
 import io.fivexer.sdk.model.OkResult;
 import io.fivexer.sdk.model.WorkerLearningStats;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,15 +45,59 @@ public final class Learning {
                 Json.query("workerId", workerId), LearnedWeightsPreview.class, false);
     }
 
+    /**
+     * The same preview, with the two flags that widen what a sync would write.
+     *
+     * <p>Both default off server-side, and both must be passed here exactly as they will be
+     * passed to {@link #applyWeights} — otherwise the preview is of a different write. A null
+     * leaves the flag off the query entirely, so "I did not ask" stays distinguishable from a
+     * deliberate {@code false}.
+     *
+     * @param overrideManual let a synthesized weight replace one an operator set by hand
+     * @param includeUnexploredTags also weight tags the worker has no reward history for
+     */
+    public LearnedWeightsPreview previewWeights(String workerId, Boolean overrideManual,
+            Boolean includeUnexploredTags) {
+        Map<String, String> query = new LinkedHashMap<>();
+        if (workerId != null) {
+            query.put("workerId", workerId);
+        }
+        if (overrideManual != null) {
+            query.put("overrideManual", overrideManual.toString());
+        }
+        if (includeUnexploredTags != null) {
+            query.put("includeUnexploredTags", includeUnexploredTags.toString());
+        }
+        return client.request("GET", "/learning/weights/preview", null,
+                query.isEmpty() ? null : query, LearnedWeightsPreview.class, false);
+    }
+
     public LearnedWeightsPreview previewWeights() {
         return previewWeights(null);
     }
 
     /** @param workerIds the workers to update, or null for every worker with learned weights */
     public Map<String, Map<String, Double>> applyWeights(List<String> workerIds) {
+        return applyWeights(workerIds, null, null);
+    }
+
+    /**
+     * Write synthesized routing weights, with the two flags that widen what gets written.
+     *
+     * @param overrideManual let a synthesized weight replace one an operator set by hand
+     * @param includeUnexploredTags also weight tags the worker has no reward history for
+     */
+    public Map<String, Map<String, Double>> applyWeights(List<String> workerIds,
+            Boolean overrideManual, Boolean includeUnexploredTags) {
         JsonObject body = new JsonObject();
         if (workerIds != null) {
             body.add("workerIds", Json.tree(workerIds));
+        }
+        if (overrideManual != null) {
+            body.addProperty("overrideManual", overrideManual);
+        }
+        if (includeUnexploredTags != null) {
+            body.addProperty("includeUnexploredTags", includeUnexploredTags);
         }
         AppliedWeights applied = client.request("POST", "/learning/weights/apply", body.toString(), null,
                 AppliedWeights.class, false);

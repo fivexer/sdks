@@ -149,7 +149,36 @@ class WorkerSelfServiceTest extends MockServerBase {
 
         RecordedRequest request = takeRequest();
         assertEquals("/v1/portal/me/availability", pathOf(request));
-        assertTrue(bodyOf(request).get("available").getAsBoolean());
+        JsonObject body = bodyOf(request);
+        assertTrue(body.get("available").getAsBoolean());
+        // No liveness contract unless one is asked for: an interactive client must not send it.
+        assertFalse(body.has("staleAfterMs"));
+    }
+
+    @Test
+    void an_unattended_worker_can_declare_how_long_its_silence_may_last() throws Exception {
+        // The opt-in that lets the platform clock out a crashed daemon instead of leaving it
+        // "available" forever. Only a headless client should ever send it.
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"available\":true}");
+
+        worker().setAvailability(true, 900000L);
+
+        JsonObject body = bodyOf(takeRequest());
+        assertTrue(body.get("available").getAsBoolean());
+        assertEquals(900000L, body.get("staleAfterMs").getAsLong());
+    }
+
+    @Test
+    void a_liveness_budget_is_never_sent_when_going_off_shift() throws Exception {
+        // It only means anything alongside `available: true` — a paused worker is not silent,
+        // it is off shift, and there is nothing left to clock out.
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"available\":false}");
+
+        worker().setAvailability(false, 900000L);
+
+        JsonObject body = bodyOf(takeRequest());
+        assertFalse(body.get("available").getAsBoolean());
+        assertFalse(body.has("staleAfterMs"));
     }
 
     @Test

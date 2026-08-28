@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.fivexer.sdk.internal.Json;
 import io.fivexer.sdk.model.AcceptWorkerInvite;
+import io.fivexer.sdk.model.AttachmentUpload;
 import io.fivexer.sdk.model.AcceptWorkerInviteResult;
 import io.fivexer.sdk.model.ChangePin;
 import io.fivexer.sdk.model.Comment;
@@ -19,6 +20,7 @@ import io.fivexer.sdk.model.Skill;
 import io.fivexer.sdk.model.SkillList;
 import io.fivexer.sdk.model.TaskAction;
 import io.fivexer.sdk.model.TeamPresence;
+import io.fivexer.sdk.model.VoiceIceServers;
 import io.fivexer.sdk.model.WorkerBreakEnded;
 import io.fivexer.sdk.model.WorkerBreakStarted;
 import io.fivexer.sdk.model.WorkerAvailabilityState;
@@ -36,6 +38,7 @@ import io.fivexer.sdk.model.WorkerSessionToken;
 import io.fivexer.sdk.model.WorkerSkillLevel;
 import io.fivexer.sdk.model.WorkerSkillSet;
 import io.fivexer.sdk.model.WorkerTaskDetail;
+import io.fivexer.sdk.model.WorkerTimeEntriesResult;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +77,7 @@ public class FivexerWorker implements AutoCloseable {
 
     private volatile String token;
     private volatile String workerId;
+    private final WorkerAttachments attachmentsResource;
 
     public FivexerWorker(String baseUrl) {
         this(baseUrl, null, null, null, 1);
@@ -84,6 +88,14 @@ public class FivexerWorker implements AutoCloseable {
         this(baseUrl, token, workerId, null, 1);
     }
 
+    /**
+     * The attachments resource holds a back-reference to this client so it shares one transport
+     * and one session token. That hands out {@code this} from the constructor, which JDK 21's
+     * {@code this-escape} lint flags for a non-final class — safe here because the resource only
+     * stashes the reference and never calls back during construction, exactly as on
+     * {@link Fivexer}.
+     */
+    @SuppressWarnings("this-escape")
     public FivexerWorker(String baseUrl, String token, String workerId, OkHttpClient httpClient, int maxRetries) {
         if (baseUrl == null || baseUrl.isEmpty()) {
             throw new IllegalArgumentException("baseUrl is required");
@@ -93,6 +105,7 @@ public class FivexerWorker implements AutoCloseable {
         this.workerId = workerId;
         this.maxRetries = maxRetries;
         this.httpClient = httpClient != null ? httpClient : new OkHttpClient();
+        this.attachmentsResource = new WorkerAttachments(this);
     }
 
     public String getBaseUrl() { return baseUrl; }
@@ -223,6 +236,17 @@ public class FivexerWorker implements AutoCloseable {
         return request("GET", "/portal/metrics/today", null, WorkerMetricsToday.class, false);
     }
 
+    /**
+     * This worker's own recorded time log — shifts and the breaks inside them, for the last 7
+     * days, with no parameters to narrow it.
+     *
+     * <p>The same record an operator reads through {@code workers().timeEntries()}. That parity is
+     * deliberate: it is what keeps the log a timesheet rather than surveillance.
+     */
+    public WorkerTimeEntriesResult timeEntries() {
+        return request("GET", "/portal/me/time-entries", null, WorkerTimeEntriesResult.class, false);
+    }
+
     /** Read-only team presence — visible to every worker in the workspace. */
     public TeamPresence teamPresence() {
         return request("GET", "/portal/team/presence", null, TeamPresence.class, false);
@@ -299,7 +323,29 @@ public class FivexerWorker implements AutoCloseable {
      * still has to admit a QR-join worker.
      */
     public WorkerAvailabilityState setAvailability(boolean available) {
-        return request("POST", "/portal/me/availability", Json.object("available", available),
+        return setAvailability(available, null);
+    }
+
+    /**
+     * The same switch with a liveness contract attached, for an <em>unattended</em> worker only.
+     *
+     * <p>{@code staleAfterMs} (60_000–86_400_000) authorises the platform to close the shift and
+     * pause routing after that much silence from this worker — which is what stops a crashed
+     * daemon reading as available forever, and shows up in the time log as
+     * {@code endReason: "timeout"}. An interactive client must never send it: a person working
+     * away from their phone is not a crashed process.
+     *
+     * <p>Only meaningful alongside {@code available: true}, so it is sent only then.
+     *
+     * @param staleAfterMs the silence budget in milliseconds, or null for no liveness contract
+     */
+    public WorkerAvailabilityState setAvailability(boolean available, Long staleAfterMs) {
+        JsonObject body = new JsonObject();
+        body.addProperty("available", available);
+        if (available && staleAfterMs != null) {
+            body.addProperty("staleAfterMs", staleAfterMs);
+        }
+        return request("POST", "/portal/me/availability", body.toString(),
                 WorkerAvailabilityState.class, false);
     }
 
@@ -400,7 +446,51 @@ public class FivexerWorker implements AutoCloseable {
                 Void.class, true);
     }
 
+    /**
+     * <strong>Experimental — voice is not production-ready.</strong> This surface may change or
+     * be withdrawn in a patch release; do not build on it yet.
+     *
+     * <p>STUN/TURN servers for a call this worker is about to join. Fetched per call rather than
+     * cached: a TURN credential is short-lived, and a stale one fails at the point where the call
+     * is already ringing. Throws {@link FivexerApiException} with code {@code voice_disabled}
+     * (404) on a workspace with voice switched off — a configuration fact, not an empty relay
+     * list to proceed on.
+     */
+    public VoiceIceServers voiceIce() {
+        return request("GET", "/portal/voice/ice", null, VoiceIceServers.class, false);
+    }
+
+    /** Files on this worker's own tasks. */
+    public WorkerAttachments attachments() { return attachmentsResource; }
+
     // ---- internals ----
+
+    /**
+     * PUT attachment bytes straight to object storage. Not a {@code /v1} call: no session token,
+     * no retry. The presigned URL carries its own authorisation, and sending the worker's token
+     * to a third-party storage host would leak it.
+     */
+    void putBytes(AttachmentUpload upload, byte[] payload) {
+        okhttp3.Request.Builder rb = new okhttp3.Request.Builder()
+                .url(upload.getUrl())
+                .method(upload.getMethod() == null ? "PUT" : upload.getMethod(),
+                        okhttp3.RequestBody.create(payload));
+        if (upload.getHeaders() != null) {
+            for (Map.Entry<String, String> e : upload.getHeaders().entrySet()) {
+                rb.header(e.getKey(), e.getValue());
+            }
+        }
+        int status;
+        try (okhttp3.Response response = httpClient.newCall(rb.build()).execute()) {
+            status = response.code();
+        } catch (java.io.IOException e) {
+            throw new FivexerException("attachment upload failed: " + e.getMessage(), e);
+        }
+        if (status >= 400) {
+            throw new FivexerApiException(status, "upload_failed",
+                    "storage upload failed with http " + status, null, null);
+        }
+    }
 
     /**
      * Resolve the worker to act as. Refusing locally rather than guessing is the point: a
@@ -415,7 +505,7 @@ public class FivexerWorker implements AutoCloseable {
         return resolved;
     }
 
-    private <T> T request(String method, String path, String body, Class<T> type, boolean voidExpected) {
+    <T> T request(String method, String path, String body, Class<T> type, boolean voidExpected) {
         return request(method, path, body, null, type, voidExpected);
     }
 

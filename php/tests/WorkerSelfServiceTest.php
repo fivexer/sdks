@@ -146,7 +146,33 @@ final class WorkerSelfServiceTest extends ClientTestCase
 
         $request = $this->lastRequest();
         self::assertSame('/v1/portal/me/availability', $this->pathOf($request));
+        // No liveness contract unless one is asked for: an interactive client must not send it.
         self::assertSame(['available' => true], $this->requestBodyJson($request));
+    }
+
+    public function testAnUnattendedWorkerCanDeclareHowLongItsSilenceMayLast(): void
+    {
+        // The opt-in that lets the platform clock out a crashed daemon instead of leaving it
+        // "available" forever. Only a headless client should ever send it.
+        $this->enqueueJson(200, '{"workerId":"agent_1","available":true}');
+
+        $this->worker()->setAvailability(true, 900000);
+
+        self::assertSame(
+            ['available' => true, 'staleAfterMs' => 900000],
+            $this->requestBodyJson($this->lastRequest())
+        );
+    }
+
+    public function testALivenessBudgetIsNeverSentWhenGoingOffShift(): void
+    {
+        // It only means anything alongside `available: true` — a paused worker is not silent,
+        // it is off shift, and there is nothing left to clock out.
+        $this->enqueueJson(200, '{"workerId":"agent_1","available":false}');
+
+        $this->worker()->setAvailability(false, 900000);
+
+        self::assertSame(['available' => false], $this->requestBodyJson($this->lastRequest()));
     }
 
     public function testChangingAPinReturnsNothingAndKeepsTheSession(): void

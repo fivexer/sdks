@@ -92,9 +92,7 @@ ALL_OPERATIONS = _operations()
 # carries; everything unprefixed is the workspace (`sk_`) plane.
 WORKER_OPS = [op for op in ALL_OPERATIONS if op.startswith("worker.")]
 SUPERVISOR_OPS = [op for op in ALL_OPERATIONS if op.startswith("supervisor.")]
-WORKSPACE_OPS = [
-    op for op in ALL_OPERATIONS if not op.startswith(("worker.", "supervisor."))
-]
+WORKSPACE_OPS = [op for op in ALL_OPERATIONS if not op.startswith(("worker.", "supervisor."))]
 
 
 def test_the_catalogue_was_actually_read():

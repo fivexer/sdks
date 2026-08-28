@@ -14,6 +14,7 @@ use Fivexer\SDK\Model\SupervisorAvailabilityResult;
 use Fivexer\SDK\Model\SupervisorEntry;
 use Fivexer\SDK\Model\SupervisorMe;
 use Fivexer\SDK\Model\SupervisorOverview;
+use Fivexer\SDK\Model\VoiceIceServers;
 use Fivexer\SDK\Model\SupervisorSession;
 use Fivexer\SDK\Model\TaskAction;
 use Fivexer\SDK\Model\TaskPriority;
@@ -215,6 +216,19 @@ final class FivexerSupervisor
      * Read before prompting for notification permission: `enabled: false` means this deployment
      * has no VAPID keypair, and a browser only gives you one prompt.
      */
+    /**
+     * **Experimental — voice is not production-ready.** This surface may change or be withdrawn
+     * in a patch release; do not build on it yet.
+     *
+     * STUN/TURN servers for a call. Same contract as the worker plane's: fetched per call
+     * because a TURN credential is short-lived, and 404 `voice_disabled` where the workspace has
+     * no voice.
+     */
+    public function voiceIce(): VoiceIceServers
+    {
+        return VoiceIceServers::fromArray($this->request('GET', '/supervisor/voice/ice') ?? []);
+    }
+
     public function pushConfig(): PushConfig
     {
         return PushConfig::fromArray($this->request('GET', '/supervisor/push/config') ?? []);

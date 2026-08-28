@@ -19,6 +19,7 @@ from fivexer import (
     PushSubscriptionInput,
     WorkerDeviceInput,
     WorkerLocation,
+    WorkerLogin,
     WorkerSkillLevel,
 )
 from tests.conftest import empty_response, json_response, read_body
@@ -59,9 +60,7 @@ def test_joining_by_qr_adopts_the_returned_session(server, anon_worker):
 
 
 def test_a_join_carrying_an_email_includes_it_and_omits_it_otherwise(server, anon_worker):
-    server.set_response(
-        json_response(201, {"token": "wt_new", "workspaceId": "ws_1", "workerId": "agent_9"})
-    )
+    server.set_response(json_response(201, {"token": "wt_new", "workspaceId": "ws_1", "workerId": "agent_9"}))
 
     anon_worker.join(JoinWorkspace(token="jt", name="Ada", pin="4821", email="ada@example.com"))
 
@@ -99,6 +98,26 @@ def test_refresh_rotates_the_token_in_place(server, worker):
     assert worker.refresh() is True
     assert server.last.url.path == "/v1/worker-auth/refresh"
     assert worker.session_token == "wt_rotated"
+
+
+def test_login_reports_when_the_session_expires(server, anon_worker):
+    server.set_response(json_response(200, {"token": "wt_new", "expiresAt": "2026-09-01T00:00:00.000Z"}))
+
+    session = anon_worker.login(WorkerLogin(workspace_id="ws_1", worker_id="agent_1", pin="4821"))
+
+    # Rotating ahead of expiry needs the expiry. Without it a caller can only rotate on a 401,
+    # which means every session ends with at least one failed request in front of a person.
+    assert session.token == "wt_new"
+    assert session.expires_at == "2026-09-01T00:00:00.000Z"
+
+
+def test_a_server_predating_the_refresh_endpoint_reports_no_expiry(server, anon_worker):
+    server.set_response(json_response(200, {"token": "wt_new"}))
+
+    session = anon_worker.login(WorkerLogin(workspace_id="ws_1", worker_id="agent_1", pin="4821"))
+
+    # None, not an invented timestamp: a made-up expiry rotates either far too early or never.
+    assert session.expires_at is None
 
 
 def test_refresh_without_a_token_short_circuits_without_a_request(server, anon_worker):
@@ -372,9 +391,7 @@ def test_subscribing_nests_the_browser_keys_the_way_the_api_expects(server, work
     # The browser hands over a flat-ish PushSubscription; the wire wants `keys: {p256dh, auth}`.
     server.set_response(json_response(201, {"endpoint": "https://fcm/x", "createdAt": "2026-08-20T00:00:00Z"}))
 
-    subscription = worker.push_subscribe(
-        PushSubscriptionInput(endpoint="https://fcm/x", p256dh="p2", auth="au")
-    )
+    subscription = worker.push_subscribe(PushSubscriptionInput(endpoint="https://fcm/x", p256dh="p2", auth="au"))
 
     assert server.last.url.path == "/v1/portal/push/subscriptions"
     assert read_body(server.last) == {"endpoint": "https://fcm/x", "keys": {"p256dh": "p2", "auth": "au"}}
