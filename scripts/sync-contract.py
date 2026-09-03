@@ -96,13 +96,20 @@ def declared_non_sdk() -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
         # Sections run to the next top-level key; everything below is indented under this one.
         return re.split(r"\n(?=[a-z_]+:)", rest)[0]
 
+    def unquote(path: str) -> str:
+        """A path holding a `{param}` has to be YAML-quoted inside a flow mapping, or an
+        unquoted `{` opens a nested mapping and the file stops being valid YAML. This scanner
+        does not care, but the web API-reference build parses the same file with js-yaml and
+        does. Accept both spellings so neither reader constrains the other."""
+        return path.strip().strip("\"'")
+
     excluded: set[tuple[str, str]] = set()
     for entry in re.finditer(r"- path:\s*(\S+)\s*\n\s*methods:\s*\[([^\]]*)\]", block("excluded")):
         for method in entry.group(2).split(","):
-            excluded.add((method.strip().upper(), normalise(entry.group(1))))
+            excluded.add((method.strip().upper(), normalise(unquote(entry.group(1)))))
 
     planned = {
-        (m.group(1).upper(), normalise(m.group(2)))
+        (m.group(1).upper(), normalise(unquote(m.group(2))))
         # `.+?` up to the line's closing brace, not `[^}]+`: paths carry `{id}` themselves.
         for m in re.finditer(r"-\s*\{\s*method:\s*(\w+),\s*path:\s*(.+?)\s*\}\s*$", block("planned"), re.M)
     }

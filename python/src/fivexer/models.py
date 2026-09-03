@@ -2676,9 +2676,24 @@ class WorkerTimeEntry:
     """
 
     type: str  # 'shift' | 'break'
+    #: The row's own id — what a correction addresses. A wrong figure is
+    #: disputed by row, never by its times, which are the thing in dispute.
+    id: str = ""
     started_at: str = ""
     ended_at: str | None = None
     duration_ms: int = 0
+    #: The times were changed after the fact.
+    corrected: bool = False
+    #: Why, and by whom. Carried on the per-worker log and the worker's own
+    #: portal view — a person can always read the reason for a change to their
+    #: record — but not on the team board, which lists many people.
+    correction_note: str | None = None
+    corrected_by: str | None = None
+    #: Whether the record was changed or stated from nothing — an added shift was
+    #: never adjusted, and calling it that sends the worker looking for an
+    #: original that never existed. Portal view only.
+    correction_kind: str | None = None
+    corrected_at: str | None = None
     #: Shifts only: 'portal' | 'operator' | 'supervisor'.
     source: str | None = None
     #: Shifts only: 'manual' | 'timeout' | 'removed'; None while still open.
@@ -2690,9 +2705,15 @@ class WorkerTimeEntry:
     def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeEntry:
         return cls(
             type=data.get("type", ""),
+            id=data.get("id", ""),
             started_at=data.get("startedAt", ""),
             ended_at=data.get("endedAt"),
             duration_ms=int(data.get("durationMs", 0)),
+            corrected=bool(data.get("corrected", False)),
+            correction_note=data.get("correctionNote"),
+            corrected_by=data.get("correctedBy"),
+            correction_kind=data.get("correctionKind"),
+            corrected_at=data.get("correctedAt"),
             source=data.get("source"),
             end_reason=data.get("endReason"),
             reason=data.get("reason"),

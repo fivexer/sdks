@@ -97,6 +97,45 @@ AS_ARGUMENTS = {
     "BreakMetricsQuery": "breaks.metrics(from, to, teamId, workerId)",
 }
 
+#: Genuinely on a workspace-plane wire, genuinely not modelled in Python, Java or PHP yet.
+#: The counterpart of `planned:` in operations.yaml, and it carries the same meaning: a debt,
+#: not a decision, so it is reported on every run and must shrink. It does NOT belong to
+#: CONSOLE_PLANE_ONLY — these responses really are sent to a workspace key, and filing them
+#: there would record a false reason for the omission.
+PLANNED = {
+    "TeamTimeResult": "GET /v1/team/time — reachable from the TS SDK (`fivexer.team.time`) only",
+    "TeamTimeWorker": "nested in TeamTimeResult — per-worker shift, break and outcome totals",
+    "TeamTimeDay": "nested in TeamTimeResult — the per-day series the console charts",
+    "TeamTimeQuery": "the echoed query on TeamTimeResult",
+    # Payroll-grade working time: correcting a record, and closing the range of
+    # days that makes it final. Workspace-plane wire, TS-only bindings so far —
+    # the console drives the whole surface and a wage figure is the last shape
+    # to commit three hand-written SDKs to while it is still moving.
+    "CorrectTimeEntryInput": "PATCH /v1/workers/{id}/time-entries/{entryId} — the correction body",
+    "CreateTimeEntryInput": "POST /v1/workers/{id}/time-entries — a shift worked but never logged",
+    "CorrectedTimeEntry": "nested in TimeEntryCorrectionResult — the entry as it stands after the change",
+    "TimeEntryCorrectionResult": "the corrected entry beside the correction that produced it",
+    "TimeCorrection": "GET /v1/workers/{id}/time-corrections — the trail a dispute reads",
+    "TimePeriodClosure": "POST /v1/team/time/close — a range of days signed off for pay",
+    "ClosePeriodInput": "the body that signs a period off",
+    "ListClosuresQuery": "the filter on GET /v1/team/time/closures",
+    "PayrollQuery": "the period on GET /v1/team/time/payroll",
+    "PayrollResult": "GET /v1/team/time/payroll — recorded hours priced and set against the rota",
+    "PayrollWorker": "nested in PayrollResult — one person's period, priced",
+    "PayrollShift": "nested in PayrollWorker — one recorded shift, priced and matched",
+    "PayrollMissedShift": "nested in PayrollWorker — rostered, nothing recorded against it",
+    "PayrollExceptions": "nested in PayrollResult — the questions a manager settles before closing",
+    # The pay model the payroll figures are built on. Reachable from the three
+    # planes only because PayrollResult carries them; the rota-side report that
+    # owns them (GET /v1/roster/planned-hours) is itself `planned:`, so these
+    # bind when it does.
+    "RosterPayBand": "nested in PayrollResult — the brackets the minutes were sorted into",
+    "PlannedHoursResult": "GET /v1/roster/planned-hours — the rota-side half of the same arithmetic",
+    "PlannedWorkerHours": "nested in PlannedHoursResult; PayrollWorker extends it",
+    "PlannedShiftBreakdown": "nested in PlannedWorkerHours — one planned shift's minutes by bracket",
+    "PlannedDayHours": "nested in PlannedHoursResult — the day series the planning view charts",
+}
+
 #: Reachable from a plane the SDKs cover, but never actually on that plane's wire. The server
 #: does not send these fields to a workspace key, and the console/account plane that does own
 #: them is a TypeScript-only surface — so mirroring them in three SDKs would model a response
@@ -111,6 +150,47 @@ CONSOLE_PLANE_ONLY = {
     "VoiceConfigView": "console voice read view; withholds the credential the session planes get",
     "VoiceIceServerInput": "the console's write shape for a relay; sessions read VoiceIceServer",
     "PolicyDefaults": "workspace policy defaults are set through the console plane",
+    # Rostering is dual-mounted on the console plane only for now. It is a
+    # supervisor's authoring surface — draft a period, lint it, solve it,
+    # publish it — read by the console and, for the worker-facing half, by the
+    # portal's own client. Committing four hand-written SDKs to the shapes
+    # before they have settled is the cost this defers; when the surface stops
+    # moving these move to operations.yaml and the other three SDKs together.
+    "RosterSettings": "console rostering settings; the workspace's own working-time rules",
+    "RosterHolidayLocation": "console rostering; a country or region the holiday calendar covers",
+    "RosterHoliday": "console rostering; one public holiday the calendar resolved",
+    "RosterContractHours": "console rostering; planned against contracted hours, from the engine",
+    "UpdateRosterSettingsInput": "console write shape for rostering settings",
+    "WorkingTimeRules": "caller-supplied rule set, passed through opaquely — the engine owns its shape",
+    "ShiftTemplate": "console shift-template library",
+    "CreateShiftTemplateInput": "console write shape for a shift template",
+    "UpdateShiftTemplateInput": "console write shape for a shift template",
+    "Roster": "console rostering; a planned period",
+    "RosterDetail": "console rostering; the roster with its expanded grid",
+    "CreateRosterInput": "console write shape for a draft roster",
+    "RosterAssignment": "console rostering; one planned pair",
+    "ShiftInstance": "console rostering; a dated occurrence the grid draws",
+    "RosterIssue": "console rostering; a rule verdict flattened for the lint panel",
+    "RosterIssueSeverity": "console rostering; the lint panel's three levels",
+    "RosterLintSummary": "console rostering; violation counts by severity",
+    "RosterLintResult": "console rostering; the instant-feedback response",
+    "RosterRuleVerdict": "console rostering; one rule's judgement on one pair",
+    "RosterCandidate": "console rostering; who could take a shift, with blockers",
+    "RosterDiagnosis": "console rostering; pre-solve capacity findings",
+    "RosterDiff": "console rostering; what a publish changes for people",
+    "RosterPublishPreflight": "console rostering; what publishing would change",
+    "RosterVersionSummary": "console rostering; the version history",
+    "SetRosterAssignmentsInput": "console write shape for a roster's assignments",
+    "SetRosterAssignmentsResult": "console rostering; the version plus its lint",
+    "RosterSolveJob": "console rostering; a background solve",
+    "RosterSolveStatus": "console rostering; a solve job's state",
+    "RosterStatus": "console rostering; draft/published/archived",
+    "TimeOffRequest": "console + portal time off; the portal has its own client",
+    "TimeOffStatus": "console + portal time off; request lifecycle",
+    "TimeOffKind": "console + portal time off; the label on a request",
+    "CreateTimeOffInput": "console write shape for a time-off request",
+    "TimeOffQuery": "console filter for time-off requests",
+    "TimeOffImpact": "console rostering; what approving a request would cost",
 }
 
 
@@ -228,12 +308,16 @@ def main() -> int:
         }
 
     unclassified: list[str] = []
+    planned_gap: list[str] = []
     gaps: list[tuple[str, str, list[str]]] = []
     classified: list[str] = []
 
     for name in sorted(covered):
         fields = top_level_fields(bodies[name])
         if not fields:
+            continue
+        if name in PLANNED:
+            planned_gap.append(f"{name} — {PLANNED[name]}")
             continue
         if name in CONSOLE_PLANE_ONLY:
             classified.append(f"{name}: console-plane only — {CONSOLE_PLANE_ONLY[name]}")
@@ -270,8 +354,13 @@ def main() -> int:
         print(f"\n{len(unclassified)} reference type(s) with no model in any SDK, and no reason given:")
         for line in unclassified:
             print(f"   {line}")
-        print("\nAdd each to ALIAS, AS_ARGUMENTS or CONSOLE_PLANE_ONLY in this script — with a")
-        print("reason — or add the model to Python, Java and PHP.")
+        print("\nAdd each to ALIAS, AS_ARGUMENTS, CONSOLE_PLANE_ONLY or PLANNED in this script")
+        print("— with a reason — or add the model to Python, Java and PHP.")
+
+    if planned_gap:
+        print(f"\nknown gap — {len(planned_gap)} type(s) declared `PLANNED` and not yet modelled in Python, Java or PHP:")
+        for line in planned_gap:
+            print(f"   {line}")
 
     if gaps:
         print(f"\n{len(gaps)} field(s) the reference SDK knows and another does not:")

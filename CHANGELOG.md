@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased] — task policies, recurring templates, worker attachments
 
 Targets `/v1` as of 2026-08-28. Python `0.6.0`, Java `0.4.0`, PHP `dev-main`,
-TypeScript `@fivexer/sdk` `0.28.0`.
+TypeScript `@fivexer/sdk` `0.30.0`.
 
 ### Added
 - **The four task policies, in Python, Java and PHP.** `tasks.create` accepted `escalation`,
@@ -56,6 +56,22 @@ TypeScript `@fivexer/sdk` `0.28.0`.
 - `contract/operations.yaml` gained the eight operations it had never claimed: the two recurring
   ones, four worker-plane attachment ones, and voice ICE on each session plane. The catalogue
   now accounts for every `/v1` operation in the spec — 150 implemented, 2 excluded, 0 unclaimed.
+- **Payroll-grade working time, in the TypeScript SDK.** Correcting a recorded shift or break
+  (`workers.correctTimeEntry`, and `workers.createTimeEntry` for one that was worked and never
+  logged), the trail those changes leave (`workers.timeCorrections`), the priced period
+  (`team.payroll`) and the close that makes a range of days final (`team.closures`,
+  `team.closePeriod`, `team.reopenPeriod`, `team.closureCovering`). The eight operations are
+  catalogued under `planned:` and their response types under `PLANNED`: they are workspace-plane
+  wire, but the console is the only thing driving them so far, and a wage figure is the last
+  shape to commit three hand-written SDKs to while it is still moving.
+- Every time-log row now carries `id` and `corrected` in Python, Java and PHP as well —
+  a wrong figure is noticed on a board and corrected by row, so without the id the caller would
+  have to identify the record by the very times under dispute. The per-worker and portal reads
+  also carry `correctionNote` / `correctedBy` / `correctedAt`: a person can always read the
+  reason for a change to their own record, which is what keeps this a timesheet rather than
+  surveillance.
+- `RosterWorkerTerms.payrollId`, read and write — the workspace's worker id rarely matches what
+  the payroll system calls the same person, and the export has to key straight in.
 - **`scripts/check-field-parity.py`**, and a `contract-sync` job that runs it. The operation
   catalogue grades whether an endpoint has a method behind it and cannot see inside a body,
   which is exactly where this drift hid — `tasks.create` existed in all four SDKs for months

@@ -11,13 +11,30 @@ package io.fivexer.sdk.model;
  * from the client and never construct them.
  */
 public class WorkerTimeEntry {
+    private String id;
     private String type;
     private String startedAt;
     private String endedAt;
     private long durationMs;
+    private boolean corrected;
+    private String correctionNote;
+    private String correctedBy;
+    /**
+     * Whether the record was changed or stated from nothing. An added shift was
+     * never adjusted, and saying so sends the worker looking for an original
+     * that never existed. Portal view only.
+     */
+    private String correctionKind;
+    private String correctedAt;
     private String source;
     private String endReason;
     private String reason;
+
+    /**
+     * The row's own id — what a correction addresses. A wrong figure is disputed by row, never
+     * by its times, which are the thing in dispute.
+     */
+    public String getId() { return id; }
 
     /** {@code "shift"} or {@code "break"}. */
     public String getType() { return type; }
@@ -28,6 +45,21 @@ public class WorkerTimeEntry {
     public String getEndedAt() { return endedAt; }
 
     public long getDurationMs() { return durationMs; }
+
+    /** The times were changed after the fact; the correction says by whom and why. */
+    public boolean isCorrected() { return corrected; }
+
+    /**
+     * Why it was changed, and who changed it. Carried on the per-worker log and on the worker's
+     * own portal view — a person can always read the reason for a change to their own record —
+     * but not on the team board, which lists many people and answers who was here.
+     */
+    public String getCorrectionNote() { return correctionNote; }
+
+    public String getCorrectedBy() { return correctedBy; }
+    public String getCorrectionKind() { return correctionKind; }
+
+    public String getCorrectedAt() { return correctedAt; }
 
     /** Shifts only: who opened it — {@code portal}, {@code operator} or {@code supervisor}. */
     public String getSource() { return source; }

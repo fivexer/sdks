@@ -1093,6 +1093,70 @@ excluded:
           Returns the HTML self-registration page behind a QR code. The SDK operation is
           worker.join (the POST).
 
+# ─────────────────────────── tracked gaps ───────────────────────────
+# Endpoints that exist and are documented, but which no hand-written SDK wraps yet.
+# Unlike `excluded:` this list is meant to shrink — an entry here is a debt, not a
+# decision.
+planned:
+    # Rostering, worker- and supervisor-facing halves. The console reaches the
+    # authoring surface on its own plane and the portal has its own client, so
+    # nothing consumes these through an SDK today. They are bound in all four
+    # once the shapes stop moving — committing hand-written Python, Java and PHP
+    # to a week-old interface is the cost this defers.
+    # A path containing a `{param}` MUST be quoted: an unquoted `{` opens a flow
+    # mapping and makes the whole file unparseable to a real YAML reader (the web
+    # API-reference build is the only consumer that uses one).
+    - { method: GET, path: "/v1/portal/timeoff" }
+    - { method: POST, path: "/v1/portal/timeoff" }
+    - { method: DELETE, path: "/v1/portal/timeoff/{id}" }
+    - { method: GET, path: "/v1/portal/roster" }
+    - { method: GET, path: "/v1/portal/roster/planning" }
+    - { method: GET, path: "/v1/supervisor/timeoff" }
+    - { method: POST, path: "/v1/supervisor/timeoff/{id}/approve" }
+    - { method: POST, path: "/v1/supervisor/timeoff/{id}/deny" }
+    - { method: GET, path: "/v1/supervisor/roster" }
+    # Cover — the call-in and the replacement hunt. Same reasoning as the rest
+    # of rostering: the console drives the authoring half on its own plane and
+    # the portal has its own client, so nothing reaches these through an SDK
+    # yet. They bind with the rest of the rostering surface.
+    - { method: POST, path: "/v1/portal/roster/cover" }
+    - { method: GET, path: "/v1/portal/roster/cover/offers" }
+    - { method: POST, path: "/v1/portal/roster/cover/offers/{id}/accept" }
+    - { method: POST, path: "/v1/portal/roster/cover/offers/{id}/decline" }
+    - { method: GET, path: "/v1/supervisor/cover" }
+    - { method: GET, path: "/v1/supervisor/cover/{coverId}/openings/{openingId}/candidates" }
+    - { method: POST, path: "/v1/supervisor/cover/{coverId}/openings/{openingId}/offer" }
+    # Pay brackets, per-person terms and the planned-hours report. Console-plane
+    # authoring like the rest of rostering, and reachable from the TS SDK
+    # (`roster.pay` / `roster.terms` / `roster.plannedHours`).
+    - { method: GET, path: "/v1/roster/pay" }
+    - { method: PUT, path: "/v1/roster/pay" }
+    - { method: GET, path: "/v1/roster/terms" }
+    - { method: PUT, path: "/v1/roster/terms/{workerId}" }
+    - { method: GET, path: "/v1/roster/planned-hours" }
+    # The holiday calendar: where a workspace's public holidays come from and
+    # which days that resolves to. Console-plane like the rest of the terms
+    # surface; bound with it.
+    - { method: GET, path: "/v1/roster/holiday-locations" }
+    - { method: GET, path: "/v1/roster/holidays" }
+    # Shipped with the time-analytics work and reachable from the TS SDK
+    # (`fivexer.team.time`); the other three still need the binding.
+    - { method: GET, path: "/v1/team/time" }
+    # Payroll-grade working time: correcting a record, and closing the period
+    # that makes a range of days final. Reachable from the TS SDK
+    # (`workers.correctTimeEntry` / `team.payroll` / `team.closePeriod`), and
+    # driven by the console on its own plane — so nothing hand-written consumes
+    # them yet. They bind with the rest of the working-time surface; a wage
+    # figure is the last shape to commit three more SDKs to while it moves.
+    - { method: PATCH, path: "/v1/workers/{id}/time-entries/{entryId}" }
+    - { method: POST, path: "/v1/workers/{id}/time-entries" }
+    - { method: GET, path: "/v1/workers/{id}/time-corrections" }
+    - { method: GET, path: "/v1/team/time/payroll" }
+    - { method: GET, path: "/v1/team/time/closures" }
+    - { method: POST, path: "/v1/team/time/close" }
+    - { method: POST, path: "/v1/team/time/closures/{id}/reopen" }
+    - { method: GET, path: "/v1/team/time/closures/covering" }
+
 # ─────────────────────────── non-HTTP surface ───────────────────────────
 helpers:
     - name: webhook.constructEvent
