@@ -2482,6 +2482,7 @@ class WorkerMe:
     break_started_at: str | None = None
     skills: list[WorkerSkill] = field(default_factory=list)
     skill_setup_pending: bool = False
+    locale: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerMe:
@@ -2494,6 +2495,7 @@ class WorkerMe:
             break_started_at=data.get("breakStartedAt"),
             skills=_each(data, "skills", WorkerSkill.from_json),
             skill_setup_pending=bool(data.get("skillSetupPending", False)),
+            locale=data.get("locale"),
         )
 
 
@@ -2505,6 +2507,16 @@ class WorkerAvailabilityState:
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerAvailabilityState:
         return cls(worker_id=data.get("workerId", ""), available=bool(data.get("available", False)))
+
+
+@dataclass
+class WorkerLocaleState:
+    worker_id: str
+    locale: str | None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerLocaleState:
+        return cls(worker_id=data.get("workerId", ""), locale=data.get("locale"))
 
 
 @dataclass

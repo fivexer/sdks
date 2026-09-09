@@ -2141,6 +2141,20 @@
                           "type": "number",
                           "minimum": 0,
                           "maximum": 100
+                        },
+                        "validFrom": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "validUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         }
                       }
                     }
@@ -2292,6 +2306,20 @@
                           "type": "number",
                           "minimum": 0,
                           "maximum": 100
+                        },
+                        "validFrom": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "validUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         }
                       }
                     }
@@ -2796,6 +2824,20 @@
                           "type": "number",
                           "minimum": 0,
                           "maximum": 100
+                        },
+                        "validFrom": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "validUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         }
                       }
                     }
@@ -3063,6 +3105,20 @@
                           "type": "number",
                           "minimum": 0,
                           "maximum": 100
+                        },
+                        "validFrom": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "validUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         }
                       }
                     }
@@ -3341,6 +3397,45 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/skills/expiring": {
+      "get": {
+        "summary": "List qualifications that have lapsed or are about to",
+        "tags": [
+          "skills"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 365
+            },
+            "in": "query",
+            "name": "withinDays",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "asOf",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
           }
         ],
         "responses": {
@@ -4637,6 +4732,170 @@
         }
       }
     },
+    "/v1/team/time/payroll/send-plan": {
+      "get": {
+        "summary": "What a payroll system would be sent for this period, and anything in the way",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "from",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "to",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "in": "query",
+            "name": "exclude",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/team/time/payroll/send": {
+      "post": {
+        "summary": "Send a closed period's hours to the payroll system",
+        "tags": [
+          "stats"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "exclude": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "maxItems": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/team/time/payroll/pay-types": {
+      "put": {
+        "summary": "Match each kind of hour to a payroll pay type, and choose review or automatic",
+        "tags": [
+          "stats"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "payTypes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "code"
+                          ],
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 32
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 120
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "sendMode": {
+                    "type": "string",
+                    "enum": [
+                      "review",
+                      "auto"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/team/time/closures/covering": {
       "get": {
         "summary": "The closed period covering a date, if any",
@@ -5599,6 +5858,18 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 256
+                  },
+                  "remember": {
+                    "type": "boolean"
+                  },
+                  "deviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "deviceLabel": {
+                    "type": "string",
+                    "maxLength": 80
                   }
                 }
               }
@@ -5759,6 +6030,52 @@
         "security": [
           {
             "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/worker-auth/devices": {
+      "get": {
+        "summary": "List devices holding a session for this worker",
+        "tags": [
+          "worker-auth"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/worker-auth/devices/{deviceId}": {
+      "delete": {
+        "summary": "Sign a device out for good",
+        "tags": [
+          "worker-auth"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "deviceId",
+            "required": true
           }
         ],
         "responses": {
@@ -8779,21 +9096,6 @@
                       "roster",
                       "everything"
                     ]
-                  },
-                  "routing": {
-                    "type": "string",
-                    "enum": [
-                      "support",
-                      "engineering",
-                      "field-jobs",
-                      "leads",
-                      "other"
-                    ]
-                  },
-                  "rosterShape": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64
                   }
                 }
               }
@@ -8926,21 +9228,6 @@
                       "roster",
                       "everything"
                     ]
-                  },
-                  "routing": {
-                    "type": "string",
-                    "enum": [
-                      "support",
-                      "engineering",
-                      "field-jobs",
-                      "leads",
-                      "other"
-                    ]
-                  },
-                  "rosterShape": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64
                   }
                 }
               }
@@ -9297,7 +9584,7 @@
     },
     "/console/workspaces/{workspaceId}/sandbox/reset": {
       "post": {
-        "summary": "Reset + reseed the sandbox simulation",
+        "summary": "Load, reload or wipe the sandbox demo data",
         "tags": [
           "console"
         ],
@@ -9318,6 +9605,122 @@
                       "leads",
                       "other"
                     ]
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "reseed",
+                      "empty"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/console/workspaces/{workspaceId}/sandbox/synthetic": {
+      "get": {
+        "summary": "Read the sandbox synthetic-data settings",
+        "tags": [
+          "console"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Configure sandbox synthetic-data generation",
+        "tags": [
+          "console"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scenario": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "support",
+                      "engineering",
+                      "field-jobs",
+                      "leads",
+                      "other",
+                      null
+                    ]
+                  },
+                  "workers": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "openTasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 200
+                  },
+                  "tasksPerHour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 240
+                  },
+                  "maxOpenTasks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
                   }
                 }
               }
@@ -11136,6 +11539,20 @@
                           "type": "number",
                           "minimum": 0,
                           "maximum": 100
+                        },
+                        "validFrom": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "validUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         }
                       }
                     }
@@ -11270,6 +11687,20 @@
                           "type": "number",
                           "minimum": 0,
                           "maximum": 100
+                        },
+                        "validFrom": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "validUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         }
                       }
                     }
@@ -11988,6 +12419,62 @@
         "tags": [
           "console"
         ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "sessionId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/console/workspaces/{workspaceId}/portal/studio/sessions/{sessionId}/cancel": {
+      "post": {
+        "summary": "Stop a specific studio agent turn",
+        "tags": [
+          "console"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "turnId"
+                ],
+                "properties": {
+                  "turnId": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9-]{16,64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
         "security": [
           {
             "session": []

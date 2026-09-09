@@ -842,6 +842,16 @@ groups:
             body: "{ currentPin, newPin }"
             response: void
             notes: A wrong current PIN is 400 `invalid_current_pin`; the session survives either way.
+          - name: worker.setLocale
+            method: PATCH
+            path: /portal/me
+            body: "{ locale }"
+            response: "{ workerId, locale }"
+            notes: >-
+                The worker's own language, stored on their identity. `null` clears it and
+                returns them to the portal's published default. Server-side too: push
+                notification copy and the invite email read this, because they are composed
+                in background jobs with no request locale to read.
           - name: worker.skillCatalog
             method: GET
             path: /portal/skills

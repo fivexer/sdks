@@ -195,6 +195,29 @@ class WorkerSelfServiceTest extends MockServerBase {
     }
 
     @Test
+    void setting_locale_patches_portal_me() throws Exception {
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"locale\":\"et\"}");
+
+        assertEquals("et", worker().setLocale("et").getLocale());
+
+        RecordedRequest request = takeRequest();
+        assertEquals("PATCH", request.getMethod());
+        assertEquals("/v1/portal/me", pathOf(request));
+        JsonObject body = bodyOf(request);
+        assertEquals("et", body.get("locale").getAsString());
+    }
+
+    @Test
+    void clearing_locale_sends_an_explicit_null() throws Exception {
+        enqueueJson(200, "{\"workerId\":\"agent_1\",\"locale\":null}");
+
+        assertNull(worker().setLocale(null).getLocale());
+
+        JsonObject body = bodyOf(takeRequest());
+        assertTrue(body.get("locale").isJsonNull());
+    }
+
+    @Test
     void the_skill_catalog_is_read_only_and_unwrapped() throws Exception {
         // Inventing a skill is an operator's decision; a worker picks from this list or none.
         enqueueJson(200, "{\"skills\":[{\"id\":\"sk_1\",\"key\":\"welsh\",\"name\":\"Welsh\"}]}");

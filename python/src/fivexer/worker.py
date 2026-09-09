@@ -58,6 +58,7 @@ from .models import (
     WorkerCreateAttachment,
     WorkerDevice,
     WorkerDeviceInput,
+    WorkerLocaleState,
     WorkerLocation,
     WorkerLocationResult,
     WorkerLogin,
@@ -290,6 +291,11 @@ class FivexerWorker:
         """A wrong ``current_pin`` is a 400 (``invalid_current_pin``); the session stays valid
         either way."""
         self._send(specs.worker_change_pin(change))
+
+    def set_locale(self, locale: str | None) -> WorkerLocaleState:
+        """Set this worker's own language. ``None`` clears it, returning them to the portal's
+        published default."""
+        return WorkerLocaleState.from_json(self._send(specs.worker_set_locale(locale)))
 
     # -- own skills --
     def skill_catalog(self) -> list[Skill]:
@@ -530,6 +536,11 @@ class AsyncFivexerWorker:
 
     async def change_pin(self, change: ChangePin) -> None:
         await self._send(specs.worker_change_pin(change))
+
+    async def set_locale(self, locale: str | None) -> WorkerLocaleState:
+        """Set this worker's own language. ``None`` clears it, returning them to the portal's
+        published default."""
+        return WorkerLocaleState.from_json(await self._send(specs.worker_set_locale(locale)))
 
     async def skill_catalog(self) -> list[Skill]:
         return _each(await self._send(specs.worker_skill_catalog()), "skills", Skill.from_json)

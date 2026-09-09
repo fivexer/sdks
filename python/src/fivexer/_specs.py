@@ -711,6 +711,10 @@ def worker_change_pin(change: ChangePin) -> RequestSpec:
     return RequestSpec("POST", "/portal/me/pin", body=body_of(change, ChangePin))
 
 
+def worker_set_locale(locale: str | None) -> RequestSpec:
+    return RequestSpec("PATCH", "/portal/me", body={"locale": locale})
+
+
 def worker_skill_catalog() -> RequestSpec:
     return RequestSpec("GET", "/portal/skills")
 

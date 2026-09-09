@@ -17,6 +17,7 @@ public class WorkerMe {
     private String breakStartedAt;
     private List<WorkerSkill> skills;
     private Boolean skillSetupPending;
+    private String locale;
 
     public String getWorkerId() { return workerId; }
     public String getLabel() { return label; }
@@ -26,4 +27,5 @@ public class WorkerMe {
     public String getBreakStartedAt() { return breakStartedAt; }
     public List<WorkerSkill> getSkills() { return skills; }
     public Boolean getSkillSetupPending() { return skillSetupPending; }
+    public String getLocale() { return locale; }
 }

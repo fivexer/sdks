@@ -30,6 +30,7 @@ use Fivexer\SDK\Model\WorkerBreakStarted;
 use Fivexer\SDK\Model\WorkerBreakToday;
 use Fivexer\SDK\Model\WorkerDevice;
 use Fivexer\SDK\Model\WorkerDeviceInput;
+use Fivexer\SDK\Model\WorkerLocaleState;
 use Fivexer\SDK\Model\WorkerLocation;
 use Fivexer\SDK\Model\WorkerLocationResult;
 use Fivexer\SDK\Model\WorkerLogin;
@@ -353,6 +354,17 @@ final class FivexerWorker
     public function changePin(ChangePin $input): void
     {
         $this->request('POST', '/portal/me/pin', $input->toArray());
+    }
+
+    /**
+     * Set this worker's own language. `null` clears it, returning them to the portal's published
+     * default.
+     */
+    public function setLocale(?string $locale): WorkerLocaleState
+    {
+        return WorkerLocaleState::fromArray(
+            $this->request('PATCH', '/portal/me', ['locale' => $locale]) ?? []
+        );
     }
 
     // ---- own skills ----

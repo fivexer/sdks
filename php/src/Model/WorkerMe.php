@@ -23,6 +23,7 @@ final class WorkerMe
         /** @var list<WorkerSkill> */
         public readonly array $skills,
         public readonly bool $skillSetupPending,
+        public readonly ?string $locale = null,
     ) {
     }
 
@@ -41,6 +42,7 @@ final class WorkerMe
             breakStartedAt: isset($data['breakStartedAt']) ? (string) $data['breakStartedAt'] : null,
             skills: Json::parseEach($data, 'skills', [WorkerSkill::class, 'fromArray']),
             skillSetupPending: (bool) ($data['skillSetupPending'] ?? false),
+            locale: isset($data['locale']) ? (string) $data['locale'] : null,
         );
     }
 }

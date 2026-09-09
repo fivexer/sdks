@@ -203,6 +203,26 @@ def test_changing_a_pin_returns_nothing_and_keeps_the_session(server, worker):
     assert worker.session_token == "wt_s3ss10n"
 
 
+def test_setting_locale_patches_portal_me(server, worker):
+    server.set_response(json_response(200, {"workerId": "agent_1", "locale": "et"}))
+
+    state = worker.set_locale("et")
+
+    assert server.last.method == "PATCH"
+    assert server.last.url.path == "/v1/portal/me"
+    assert read_body(server.last) == {"locale": "et"}
+    assert state.locale == "et"
+
+
+def test_clearing_locale_sends_an_explicit_null(server, worker):
+    server.set_response(json_response(200, {"workerId": "agent_1", "locale": None}))
+
+    state = worker.set_locale(None)
+
+    assert read_body(server.last) == {"locale": None}
+    assert state.locale is None
+
+
 def test_the_skill_catalog_is_read_only_and_unwrapped(server, worker):
     # Inventing a skill is an operator's decision; a worker picks from this list or picks none.
     server.set_response(
@@ -417,6 +437,8 @@ def test_async_worker_self_service_mirrors_the_sync_wire(server, async_worker):
         path = request.url.path
         if request.method == "DELETE":
             return empty_response(204)
+        if path.endswith("/portal/me") and request.method == "PATCH":
+            return json_response(200, {"workerId": "agent_1", "locale": "et"})
         if path.endswith("/portal/me"):
             return json_response(200, {"workerId": "agent_1", "label": "Ada", "skillSetupPending": False})
         if path.endswith("/me/availability"):
@@ -456,6 +478,7 @@ def test_async_worker_self_service_mirrors_the_sync_wire(server, async_worker):
                 await async_worker.me(),
                 await async_worker.set_availability(True),
                 await async_worker.change_pin(ChangePin(current_pin="1", new_pin="4821")),
+                await async_worker.set_locale("et"),
                 await async_worker.skill_catalog(),
                 await async_worker.set_skills([WorkerSkillLevel(skill_id="sk_1", level=2)]),
                 await async_worker.comments("t1"),
@@ -470,11 +493,14 @@ def test_async_worker_self_service_mirrors_the_sync_wire(server, async_worker):
         finally:
             await async_worker.aclose()
 
-    me, avail, pin, catalog, skills, comments, comment, metrics, loc, device, cfg, sub, refreshed = asyncio.run(main())
+    me, avail, pin, locale, catalog, skills, comments, comment, metrics, loc, device, cfg, sub, refreshed = (
+        asyncio.run(main())
+    )
 
     assert me.worker_id == "agent_1"
     assert avail.available is True
     assert pin is None
+    assert locale.locale == "et"
     assert catalog == [] and skills.worker_id == "agent_1"
     assert comments.comments == [] and comment.body == "hi"
     assert metrics.worker_id == "agent_1"

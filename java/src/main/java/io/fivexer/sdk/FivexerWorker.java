@@ -27,6 +27,7 @@ import io.fivexer.sdk.model.WorkerAvailabilityState;
 import io.fivexer.sdk.model.WorkerBreakToday;
 import io.fivexer.sdk.model.WorkerDevice;
 import io.fivexer.sdk.model.WorkerDeviceInput;
+import io.fivexer.sdk.model.WorkerLocaleState;
 import io.fivexer.sdk.model.WorkerLocation;
 import io.fivexer.sdk.model.WorkerLocationResult;
 import io.fivexer.sdk.model.WorkerLogin;
@@ -352,6 +353,14 @@ public class FivexerWorker implements AutoCloseable {
     /** A wrong current PIN is a 400 ({@code invalid_current_pin}); the session survives either way. */
     public void changePin(ChangePin input) {
         request("POST", "/portal/me/pin", input.toJson(), Void.class, true);
+    }
+
+    /**
+     * Set this worker's own language. {@code null} clears it, returning them to the portal's
+     * published default.
+     */
+    public WorkerLocaleState setLocale(String locale) {
+        return request("PATCH", "/portal/me", Json.object("locale", locale), WorkerLocaleState.class, false);
     }
 
     // ---- own skills ----

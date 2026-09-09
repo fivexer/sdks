@@ -189,6 +189,27 @@ final class WorkerSelfServiceTest extends ClientTestCase
         self::assertSame('wt_s3ss10n', $worker->getSessionToken());
     }
 
+    public function testSettingLocalePatchesPortalMe(): void
+    {
+        $this->enqueueJson(200, '{"workerId":"agent_1","locale":"et"}');
+
+        self::assertSame('et', $this->worker()->setLocale('et')->locale);
+
+        $request = $this->lastRequest();
+        self::assertSame('PATCH', $request->getMethod());
+        self::assertSame('/v1/portal/me', $this->pathOf($request));
+        self::assertSame(['locale' => 'et'], $this->requestBodyJson($request));
+    }
+
+    public function testClearingLocaleSendsAnExplicitNull(): void
+    {
+        $this->enqueueJson(200, '{"workerId":"agent_1","locale":null}');
+
+        self::assertNull($this->worker()->setLocale(null)->locale);
+
+        self::assertSame(['locale' => null], $this->requestBodyJson($this->lastRequest()));
+    }
+
     public function testTheSkillCatalogIsReadOnlyAndUnwrapped(): void
     {
         // Inventing a skill is an operator's decision; a worker picks from this list or none.
