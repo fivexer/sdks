@@ -5,7 +5,52 @@ language. The `/v1` API contract version each release targets is noted when rele
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — task policies, recurring templates, worker attachments
+## [python-0.7.0] / [java-0.5.0] — worker locale, corrected time records
+
+Targets `/v1` as of 2026-09-10. Python `0.7.0`, Java `0.5.0`, PHP `dev-main`.
+
+### Added
+- **`worker.setLocale`** (`PATCH /portal/me`) in Python, Java and PHP, matching the reference
+  TypeScript SDK's wire shape — the worker plane's own way to change the language a portal and
+  its notifications speak in, without a manager round-trip. `WorkerMe.locale` comes with it, so
+  a client can read back what it set.
+- **`locale` on the manager-facing half** (`UpsertWorker`, `WorkerDetail`). Adding it to
+  `WorkerMe` alone left the field readable by the worker and invisible to the workspace.
+- **`validFrom` / `validUntil` on `WorkerSkill` and `WorkerSkillAssignment`** — pre-existing
+  drift from the reference SDK, which the field-parity gate is all-or-nothing about. A skill
+  that lapses on a date is a different fact from one that does not, and three SDKs could not
+  express it.
+- All four fields are **nullable on the wire, where absent and null differ**: omitting leaves the
+  stored value, null erases it. Each SDK says that in its own established idiom — Python's
+  `CLEAR` sentinel, PHP's `clearX()` flag, Java's transient flag. Java needed one thing more: a
+  skill assignment is nested inside the worker's `skills` array, so Gson reflects over it and its
+  own `toJson` never runs; the enclosing model stamps the explicit nulls back onto the tree after
+  building it, and a test pins exactly that.
+- **The correction trail on every recorded time entry** (`WorkerTimeEntry`): `id`, `corrected`,
+  `correctionNote`, `correctedBy`, `correctedAt`, and `correctionKind`. The row's own id is what
+  a correction addresses — a wrong figure is disputed by row, never by its times, which are the
+  thing in dispute. `correctionKind` distinguishes a record that was *changed* from one *stated
+  from nothing*: calling an added shift an adjustment sends the worker looking for an original
+  that never existed. It is portal-view only.
+- `contract/operations.yaml` gained a `planned:` section covering the rostering, cover, pay-terms,
+  holiday-calendar and payroll-grade working-time endpoints that exist and are documented but
+  which no hand-written SDK wraps yet. An entry there is a debt, not a decision — unlike
+  `excluded:`, the list is meant to shrink. The console drives those surfaces on its own plane
+  and the portal has its own client, so committing three hand-written SDKs to a week-old
+  interface is the cost this defers.
+
+### Fixed
+- `contract/openapi.json` refreshed from the platform spec; the six operations that entered it
+  with the refresh are classified rather than left to fail the catalogue gate as unreasoned, as
+  is `ExpiringWorkerSkill`.
+- PHP CI pins Xdebug `3.5.3` on the coverage legs. A bare `xdebug` let `setup-php` resolve the
+  newest build, which on PHP >= 8.2 became the `3.6.0alpha1` pre-release: it records lines
+  correctly but loses about half the *executed* branches (1540/1635 under 3.5.3 versus 830/1635
+  under 3.6.0a1, on the same commit and the same passing suite, with the executable-branch count
+  unchanged). The 90% branch gate was failing on a property of the profiler rather than of the
+  code.
+
+## [python-0.6.0] / [java-0.4.0] — task policies, recurring templates, worker attachments
 
 Targets `/v1` as of 2026-08-28. Python `0.6.0`, Java `0.4.0`, PHP `dev-main`,
 TypeScript `@fivexer/sdk` `0.30.0`.
@@ -100,7 +145,9 @@ TypeScript `@fivexer/sdk` `0.30.0`.
   nobody receives. Recorded in the new gate's `CONSOLE_PLANE_ONLY` table rather than left to be
   rediscovered.
 
-## [Unreleased] — recorded working time
+## [python-0.6.0] / [java-0.4.0] — recorded working time
+
+Shipped in the same tags as the section above; there was no separate release between them.
 
 ### Added
 - **Recorded working time and per-worker analytics.** The platform now keeps a durable shift log
@@ -146,7 +193,7 @@ TypeScript `@fivexer/sdk` `0.30.0`.
   (`portal`, `slaStats`), because only `stats` was special-cased. Both now resolve any dotless
   name as a top-level client method.
 
-## [Unreleased] — supervisor plane
+## [python-0.4.0] / [java-0.3.0] — supervisor plane
 
 ### Added
 - **The supervisor plane, in all four SDKs.** A third credential type (`sv_` session) alongside

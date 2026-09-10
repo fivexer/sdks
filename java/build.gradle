@@ -9,7 +9,7 @@ plugins {
 // about a domain you control: `com.fivexer` is checked by a DNS TXT record on fivexer.com.
 // `io.fivexer` would require fivexer.io, which does not exist.
 group = 'com.fivexer'
-version = '0.4.0'
+version = '0.5.0'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11
