@@ -39,10 +39,20 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: curl, json, mbstring
-          # Xdebug is what supplies branch data; the line-only drivers cannot feed the gate. It is
-          # installed only where the gate runs (see below) — on Windows it is dead weight, and
-          # Xdebug's ~170ms-per-test instrumentation is the last thing the slower runner needs.
+          # Xdebug is PINNED, and only on the legs that measure coverage. setup-php resolves a
+          # bare `xdebug` to the newest build it can find, which on PHP >= 8.2 became the
+          # 3.6.0alpha1 pre-release: it still records lines correctly (97.7%) but loses roughly
+          # half of the executed *branches* (1540/1635 under 3.5.3 vs 830/1635 under 3.6.0a1 on
+          # the same commit, with the executable-branch count unchanged), which fails the 90%
+          # branch gate for reasons that have nothing to do with the code under test. Pinning a
+          # stable release keeps every leg measuring the same thing. Revisit once 3.6 is stable.
+          # `add_extension` short-circuits when the extension is already loaded, so the pinned
+          # build survives the `coverage: xdebug` step below — that step then only sets
+          # xdebug.mode (which is INI_SYSTEM, so phpunit.xml cannot set it).
+          extensions: curl, json, mbstring${{ runner.os == 'Linux' && ', xdebug-3.5.3' || '' }}
+          # The line-only coverage drivers cannot feed the branch gate. Coverage is enabled only
+          # where the gate runs (see below) — on Windows it is dead weight, and Xdebug's
+          # ~170ms-per-test instrumentation is the last thing the slower runner needs.
           coverage: ${{ runner.os == 'Linux' && 'xdebug' || 'none' }}
         env:
           COMPOSER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
