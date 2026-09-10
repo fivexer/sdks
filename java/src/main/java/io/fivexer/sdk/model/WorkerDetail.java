@@ -30,6 +30,8 @@ public class WorkerDetail {
     private boolean invitePending;
     private boolean pendingApproval;
     private int queueDepth;
+    /** Null when they have never chosen one and the workspace default applies. */
+    private String locale;
 
     public String getId() { return id; }
     public List<String> getTags() { return tags; }
@@ -44,4 +46,7 @@ public class WorkerDetail {
     public boolean isInvitePending() { return invitePending; }
     public boolean isPendingApproval() { return pendingApproval; }
     public int getQueueDepth() { return queueDepth; }
+
+    /** The worker's language — what their push notifications and emails are composed in. */
+    public String getLocale() { return locale; }
 }

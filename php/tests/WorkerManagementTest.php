@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Fivexer\SDK\Tests;
 
 use Fivexer\SDK\Exception\FivexerApiException;
+use Fivexer\SDK\Model\PatchWorker;
 use Fivexer\SDK\Model\UpsertWorker;
+use Fivexer\SDK\Model\WorkerSkillAssignment;
 
 /**
  * Worker management: upsert, list, queue inspection, and removal.
@@ -231,5 +233,93 @@ final class WorkerManagementTest extends ClientTestCase
             self::assertSame(25, $e->quota?->workersLimit);
             self::assertSame(0, $e->quota?->workersRemaining);
         }
+    }
+
+    public function test_upserting_a_worker_sends_their_language(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+
+        $this->client()->workers()->upsert((new UpsertWorker('agent_1'))->locale('et'));
+
+        self::assertSame(['id' => 'agent_1', 'locale' => 'et'], $this->requestBodyJson($this->lastRequest()));
+    }
+
+    /**
+     * Absent and null differ here: omitting the field leaves the stored language alone, so
+     * falling back to the workspace default has to be said with an explicit null.
+     */
+    public function test_clearing_a_workers_language_sends_an_explicit_null(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+
+        $this->client()->workers()->upsert((new UpsertWorker('agent_1'))->clearLocale());
+
+        self::assertSame(['id' => 'agent_1', 'locale' => null], $this->requestBodyJson($this->lastRequest()));
+    }
+
+    public function test_patching_a_worker_can_set_and_clear_the_language(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+        $this->client()->workers()->patch('agent_1', (new PatchWorker())->locale('et'));
+        self::assertSame(['locale' => 'et'], $this->requestBodyJson($this->lastRequest()));
+
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+        $this->client()->workers()->patch('agent_1', (new PatchWorker())->clearLocale());
+        self::assertSame(['locale' => null], $this->requestBodyJson($this->lastRequest()));
+    }
+
+    public function test_a_skill_assignment_carries_its_validity_window(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+
+        $this->client()->workers()->upsert(
+            (new UpsertWorker('agent_1'))->skills([
+                (new WorkerSkillAssignment('sk_forklift', 4))->validFrom('2026-01-01')->validUntil('2026-12-31'),
+            ]),
+        );
+
+        $body = $this->requestBodyJson($this->lastRequest());
+        self::assertSame(
+            ['skillId' => 'sk_forklift', 'level' => 4, 'validFrom' => '2026-01-01', 'validUntil' => '2026-12-31'],
+            $body['skills'][0],
+        );
+    }
+
+    /** A licence that stops expiring, or a start date withdrawn, is a real edit only null can say. */
+    public function test_clearing_a_skills_validity_dates_sends_explicit_nulls(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+
+        $this->client()->workers()->upsert(
+            (new UpsertWorker('agent_1'))->skills([
+                (new WorkerSkillAssignment('sk_forklift', 4))->clearValidFrom()->clearValidUntil(),
+            ]),
+        );
+
+        $body = $this->requestBodyJson($this->lastRequest());
+        self::assertSame(
+            ['skillId' => 'sk_forklift', 'level' => 4, 'validFrom' => null, 'validUntil' => null],
+            $body['skills'][0],
+        );
+    }
+
+    public function test_worker_detail_reads_locale_and_skill_validity(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1","locale":"et","skills":[{"skillId":"sk_forklift","key":"forklift",'
+            . '"name":"Forklift","level":4,"weight":80,"validFrom":"2026-01-01","validUntil":"2026-12-31"}]}');
+
+        $worker = $this->client()->workers()->get('agent_1');
+
+        self::assertSame('et', $worker->locale);
+        self::assertNotNull($worker->skills);
+        self::assertSame('2026-01-01', $worker->skills[0]->validFrom);
+        self::assertSame('2026-12-31', $worker->skills[0]->validUntil);
+    }
+
+    public function test_worker_detail_without_a_locale_reads_null(): void
+    {
+        $this->enqueueJson(200, '{"id":"agent_1"}');
+
+        self::assertNull($this->client()->workers()->get('agent_1')->locale);
     }
 }

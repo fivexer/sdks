@@ -103,6 +103,10 @@ AS_ARGUMENTS = {
 #: CONSOLE_PLANE_ONLY — these responses really are sent to a workspace key, and filing them
 #: there would record a false reason for the omission.
 PLANNED = {
+    # Skill expiry. The endpoint is bound in the reference TS SDK (`workers.expiringSkills`)
+    # and read by the console; the three hand-written SDKs have not modelled the row yet.
+    # Tracked as debt alongside GET /v1/skills/expiring in contract/operations.yaml.
+    "ExpiringWorkerSkill": "GET /v1/skills/expiring — one qualification that has lapsed, or is about to",
     "TeamTimeResult": "GET /v1/team/time — reachable from the TS SDK (`fivexer.team.time`) only",
     "TeamTimeWorker": "nested in TeamTimeResult — per-worker shift, break and outcome totals",
     "TeamTimeDay": "nested in TeamTimeResult — the per-day series the console charts",

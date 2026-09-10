@@ -49,6 +49,11 @@ final class WorkerDetail
          */
         public readonly bool $invitePending = false,
         public readonly bool $pendingApproval = false,
+        /**
+         * The worker's language, or null when they have never chosen one and the workspace
+         * default applies. This is what their push notifications and emails are composed in.
+         */
+        public readonly ?string $locale = null,
     ) {
     }
 
@@ -74,6 +79,7 @@ final class WorkerDetail
             teams: Json::parseEachOrNull($data, 'teams', [WorkerTeam::class, 'fromArray']),
             invitePending: (bool) ($data['invitePending'] ?? false),
             pendingApproval: (bool) ($data['pendingApproval'] ?? false),
+            locale: isset($data['locale']) ? (string) $data['locale'] : null,
         );
     }
 }

@@ -339,4 +339,60 @@ class InputBuilderTest {
         assertTrue(new ListRunsQuery().workflowId("wf").toQuery().containsKey("workflowId"));
         new ListRunsQuery().workflowId("wf").toQuery().remove("workflowId");
     }
+
+    @Test
+    void a_worker_builder_carries_the_workers_language() {
+        UpsertWorker worker = new UpsertWorker().id("agent_1").locale("et");
+
+        assertTrue(worker.toJson().contains("\"locale\":\"et\""));
+    }
+
+    /**
+     * Absent and null differ here: omitting the field leaves the stored language alone, so
+     * returning a worker to the workspace default has to be said with an explicit null — which
+     * Gson's omit-nulls rule cannot express on its own.
+     */
+    @Test
+    void clearing_a_workers_language_sends_an_explicit_null() {
+        assertEquals("{\"id\":\"agent_1\",\"locale\":null}", new UpsertWorker().id("agent_1").clearLocale().toJson());
+        assertEquals("{\"locale\":null}", new PatchWorker().clearLocale().toJson());
+    }
+
+    @Test
+    void a_patch_can_set_the_language_without_clearing_it() {
+        assertEquals("{\"locale\":\"et\"}", new PatchWorker().locale("et").toJson());
+    }
+
+    @Test
+    void a_skill_assignment_carries_its_validity_window() {
+        WorkerSkillAssignment skill =
+                new WorkerSkillAssignment("skl_1", 4).validFrom("2026-01-01").validUntil("2026-12-31");
+
+        assertEquals("2026-01-01", skill.getValidFrom());
+        assertEquals("2026-12-31", skill.getValidUntil());
+        assertTrue(new UpsertWorker().skills(List.of(skill)).toJson().contains("\"validUntil\":\"2026-12-31\""));
+    }
+
+    /**
+     * A nested assignment is serialised by Gson reflecting over the enclosing worker, so its own
+     * toJson never runs — the enclosing model has to stamp the explicit nulls back on. This is
+     * the test that would fail if that stitching were dropped.
+     */
+    @Test
+    void clearing_a_nested_skills_validity_dates_sends_explicit_nulls() {
+        String body = new UpsertWorker()
+                .skills(List.of(new WorkerSkillAssignment("skl_1", 4).clearValidFrom().clearValidUntil()))
+                .toJson();
+
+        assertTrue(body.contains("\"validFrom\":null"), body);
+        assertTrue(body.contains("\"validUntil\":null"), body);
+    }
+
+    @Test
+    void a_skill_assignment_that_sets_no_dates_omits_them_entirely() {
+        String body = new UpsertWorker().skills(List.of(new WorkerSkillAssignment("skl_1", 4))).toJson();
+
+        assertTrue(!body.contains("validFrom"), body);
+        assertTrue(!body.contains("validUntil"), body);
+    }
 }

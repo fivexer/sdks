@@ -1,5 +1,8 @@
 package io.fivexer.sdk.model;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonNull;
+import com.google.gson.JsonObject;
 import io.fivexer.sdk.internal.Json;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +21,11 @@ public class UpsertWorker {
     private Double longitude;
     private Double maxTravelDistanceKm;
     private Integer maxBacklogSize;  // per-worker cap overriding the workspace default; 0 = receive nothing
+    private String locale;
+
+    // transient: a flag, not a wire field. Distinguishes "leave the language alone"
+    // (absent) from "erase it" (explicit null), which a null String cannot express alone.
+    private transient boolean clearLocale;
     private List<String> teamIds;    // replaces membership wholesale; empty list clears it
     private Boolean available;       // shift state; omit to leave a worker's current state alone
 
@@ -64,8 +72,42 @@ public class UpsertWorker {
      */
     public UpsertWorker available(boolean available) { this.available = available; return this; }
 
-    /** Serialises only the fields that were set. */
+
+    /**
+     * The worker's own language — not only a portal preference: it is what their push
+     * notifications and invitation email are composed in. Same column and validation
+     * ({@code en}/{@code et}) as the worker's own {@code PATCH /portal/me}, so a manager setting
+     * it here and the worker setting it themselves can never disagree about what a legal value is.
+     */
+    public UpsertWorker locale(String locale) {
+        this.locale = locale;
+        this.clearLocale = false;
+        return this;
+    }
+
+    /** Erase the stored language, returning them to the workspace default. Sends an explicit null. */
+    public UpsertWorker clearLocale() {
+        this.locale = null;
+        this.clearLocale = true;
+        return this;
+    }
+
+    /**
+     * Serialises only the fields that were set, then restores the explicit nulls that Gson's
+     * omit-nulls rule cannot express: a cleared language, and a cleared validity date on any
+     * nested skill assignment.
+     */
     public String toJson() {
-        return Json.write(this);
+        JsonObject o = Json.tree(this).getAsJsonObject();
+        if (clearLocale) {
+            o.add("locale", JsonNull.INSTANCE);
+        }
+        if (skills != null && o.has("skills")) {
+            JsonArray out = o.getAsJsonArray("skills");
+            for (int i = 0; i < skills.size(); i++) {
+                skills.get(i).applyExplicitNulls(out.get(i).getAsJsonObject());
+            }
+        }
+        return o.toString();
     }
 }

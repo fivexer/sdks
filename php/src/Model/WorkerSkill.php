@@ -18,6 +18,10 @@ final class WorkerSkill
         public readonly int $level,
         public readonly float $weight,
         public readonly ?float $weightOverride,
+        /** Inclusive ISO day it became valid; null when unbounded. */
+        public readonly ?string $validFrom = null,
+        /** Inclusive *last* day it may be relied on; null when it does not expire. */
+        public readonly ?string $validUntil = null,
     ) {
     }
 
@@ -34,6 +38,8 @@ final class WorkerSkill
             level: (int) ($data['level'] ?? 0),
             weight: (float) ($data['weight'] ?? 0),
             weightOverride: isset($data['weightOverride']) ? (float) $data['weightOverride'] : null,
+            validFrom: isset($data['validFrom']) ? (string) $data['validFrom'] : null,
+            validUntil: isset($data['validUntil']) ? (string) $data['validUntil'] : null,
         );
     }
 }

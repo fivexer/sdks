@@ -28,8 +28,12 @@ final class PatchWorker
         private ?float $maxTravelDistanceKm = null,
         /** per-worker backlog cap; 0 = receive nothing */
         private ?int $maxBacklogSize = null,
+        private ?string $locale = null,
     ) {
     }
+
+    /** Distinguishes "leave the language alone" from "erase it" — both look like null. */
+    private bool $clearingLocale = false;
 
     /** @param list<string> $tags */
     public function tags(array $tags): self
@@ -82,6 +86,22 @@ final class PatchWorker
         return $this;
     }
 
+    /** The worker's language — what their push notifications and emails are composed in. */
+    public function locale(string $locale): self
+    {
+        $this->locale = $locale;
+        $this->clearingLocale = false;
+        return $this;
+    }
+
+    /** Erase the stored language, returning them to the workspace default. Sends null. */
+    public function clearLocale(): self
+    {
+        $this->locale = null;
+        $this->clearingLocale = true;
+        return $this;
+    }
+
     /**
      * Serialise for the wire, omitting unset fields.
      *
@@ -98,7 +118,11 @@ final class PatchWorker
             'longitude' => $this->longitude,
             'maxTravelDistanceKm' => $this->maxTravelDistanceKm,
             'maxBacklogSize' => $this->maxBacklogSize,
+            'locale' => $this->locale,
         ]);
+        if ($this->clearingLocale) {
+            $payload['locale'] = null;
+        }
         return $payload;
     }
 }

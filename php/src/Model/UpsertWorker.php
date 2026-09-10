@@ -30,8 +30,12 @@ final class UpsertWorker
         private ?array $teamIds = null,
         /** Shift state; null leaves a worker's current state untouched */
         private ?bool $available = null,
+        private ?string $locale = null,
     ) {
     }
+
+    /** Distinguishes "leave the language alone" from "erase it" — both look like null. */
+    private bool $clearingLocale = false;
 
     public function id(string $id): self
     {
@@ -117,6 +121,27 @@ final class UpsertWorker
     }
 
     /**
+     * The worker's own language — not only a portal preference: it is what their push
+     * notifications and invitation email are composed in. Same column and validation
+     * (`en`/`et`) as the worker's own PATCH /portal/me, so a manager setting it here and the
+     * worker setting it themselves can never disagree about what a legal value is.
+     */
+    public function locale(string $locale): self
+    {
+        $this->locale = $locale;
+        $this->clearingLocale = false;
+        return $this;
+    }
+
+    /** Erase the stored language, returning them to the workspace default. Sends null. */
+    public function clearLocale(): self
+    {
+        $this->locale = null;
+        $this->clearingLocale = true;
+        return $this;
+    }
+
+    /**
      * Serializes only the set fields (omits nulls).
      *
      * @return array<string, mixed>
@@ -135,6 +160,7 @@ final class UpsertWorker
             'maxBacklogSize' => $this->maxBacklogSize,
             'teamIds' => $this->teamIds,
             'available' => $this->available,
-        ]);
+            'locale' => $this->locale,
+        ]) + ($this->clearingLocale ? ['locale' => null] : []);
     }
 }

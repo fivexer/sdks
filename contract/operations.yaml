@@ -1166,6 +1166,25 @@ planned:
     - { method: POST, path: "/v1/team/time/close" }
     - { method: POST, path: "/v1/team/time/closures/{id}/reopen" }
     - { method: GET, path: "/v1/team/time/closures/covering" }
+    # The send half of payroll: the dry-run plan, the send itself, and the pay-type
+    # mapping it reads. Reference-TS only (`team.payrollSendPlan` / `team.payrollSend`
+    # / `team.setPayTypes` on the account plane), driven by the console. They bind with
+    # the rest of the working-time surface above, for the same reason: a wage figure is
+    # the last shape to commit three more SDKs to while it is still moving.
+    - { method: GET, path: "/v1/team/time/payroll/send-plan" }
+    - { method: POST, path: "/v1/team/time/payroll/send" }
+    - { method: PUT, path: "/v1/team/time/payroll/pay-types" }
+
+    # Trusted devices — a worker's "remember me" list and the revoke beside it. The
+    # portal calls these directly on the worker plane; no hand-written SDK wraps them,
+    # and no reference-TS method exposes them either.
+    - { method: GET, path: "/v1/worker-auth/devices" }
+    - { method: DELETE, path: "/v1/worker-auth/devices/{deviceId}" }
+
+    # Skill expiry. Reachable from the reference TS SDK (`workers.expiringSkills`) and
+    # read by the console; the three hand-written SDKs have not bound it yet, which is
+    # the pre-existing drift the openapi.json refresh made visible rather than caused.
+    - { method: GET, path: "/v1/skills/expiring" }
 
 # ─────────────────────────── non-HTTP surface ───────────────────────────
 helpers:

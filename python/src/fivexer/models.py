@@ -853,6 +853,10 @@ class WorkerSkill:
     level: int
     weight: float
     weight_override: float | None = None
+    #: Inclusive ISO day it became valid; ``None`` when unbounded.
+    valid_from: str | None = None
+    #: Inclusive **last** day it may be relied on; ``None`` when it does not expire.
+    valid_until: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerSkill:
@@ -863,6 +867,8 @@ class WorkerSkill:
             level=int(data.get("level", 0)),
             weight=float(data.get("weight", 0)),
             weight_override=_float_or_none(data.get("weightOverride")),
+            valid_from=data.get("validFrom"),
+            valid_until=data.get("validUntil"),
         )
 
 
@@ -873,10 +879,23 @@ class WorkerSkillAssignment:
     skill_id: str
     level: int
     weight_override: float | None = None
+    #: Inclusive ISO day (``YYYY-MM-DD``) the qualification becomes valid. Omit for "always
+    #: held"; pass :data:`CLEAR` to erase a date already stored.
+    valid_from: str | None = None
+    #: Inclusive **last** day it may be relied on. Omit for "does not expire"; :data:`CLEAR`
+    #: erases a stored expiry. The roster checks this against the *shift's* date, so a licence
+    #: lapsing mid-period bars the shifts after it and leaves the earlier ones standing.
+    valid_until: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        payload = compact({"weightOverride": self.weight_override})
+        payload = compact(
+            {"weightOverride": self.weight_override, "validFrom": self.valid_from, "validUntil": self.valid_until}
+        )
         payload.update({"skillId": self.skill_id, "level": self.level})
+        if self.valid_from is CLEAR:
+            payload["validFrom"] = None
+        if self.valid_until is CLEAR:
+            payload["validUntil"] = None
         return payload
 
 
@@ -903,9 +922,15 @@ class UpsertWorker:
     # one call: the escape hatch for programmatic fleets with no human at a portal. On an
     # update, omit it to leave the worker's current shift state untouched.
     available: bool | None = None
+    # The worker's own language — not only a portal preference: it is what their push
+    # notifications and invitation email are composed in. Same column and validation
+    # (`en`/`et`) as the worker's own PATCH /portal/me, so a manager setting it here and
+    # the worker setting it themselves can never disagree about what a legal value is.
+    # Omit to leave it untouched; pass CLEAR to erase it.
+    locale: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return compact(
+        payload = compact(
             {
                 "id": self.id,
                 "tags": self.tags,
@@ -918,8 +943,12 @@ class UpsertWorker:
                 "maxTravelDistanceKm": self.max_travel_distance_km,
                 "maxBacklogSize": self.max_backlog_size,
                 "available": self.available,
+                "locale": self.locale,
             }
         )
+        if self.locale is CLEAR:
+            payload["locale"] = None
+        return payload
 
 
 @dataclass
@@ -934,9 +963,11 @@ class PatchWorker:
     longitude: float | None = None
     max_travel_distance_km: float | None = None
     max_backlog_size: int | None = None
+    #: The worker's language. Omit to leave it untouched; pass :data:`CLEAR` to erase it.
+    locale: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return compact(
+        payload = compact(
             {
                 "tags": self.tags,
                 "routingWeights": self.routing_weights,
@@ -946,8 +977,12 @@ class PatchWorker:
                 "longitude": self.longitude,
                 "maxTravelDistanceKm": self.max_travel_distance_km,
                 "maxBacklogSize": self.max_backlog_size,
+                "locale": self.locale,
             }
         )
+        if self.locale is CLEAR:
+            payload["locale"] = None
+        return payload
 
 
 @dataclass
@@ -992,6 +1027,9 @@ class WorkerDetail:
     invite_pending: bool = False
     pending_approval: bool = False
     queue_depth: int = 0
+    #: The worker's language, or ``None`` when they have never chosen one and the workspace
+    #: default applies. This is what their push notifications and emails are composed in.
+    locale: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerDetail:
@@ -1009,6 +1047,7 @@ class WorkerDetail:
             invite_pending=bool(data.get("invitePending", False)),
             pending_approval=bool(data.get("pendingApproval", False)),
             queue_depth=int(data.get("queueDepth", 0)),
+            locale=data.get("locale"),
         )
 
 

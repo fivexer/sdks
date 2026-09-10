@@ -493,8 +493,8 @@ def test_async_worker_self_service_mirrors_the_sync_wire(server, async_worker):
         finally:
             await async_worker.aclose()
 
-    me, avail, pin, locale, catalog, skills, comments, comment, metrics, loc, device, cfg, sub, refreshed = (
-        asyncio.run(main())
+    me, avail, pin, locale, catalog, skills, comments, comment, metrics, loc, device, cfg, sub, refreshed = asyncio.run(
+        main()
     )
 
     assert me.worker_id == "agent_1"

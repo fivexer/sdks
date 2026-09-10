@@ -13,6 +13,8 @@ public class WorkerSkill {
     private int level;
     private Double weightOverride;
     private double weight;
+    private String validFrom;
+    private String validUntil;
 
     public String getSkillId() { return skillId; }
     public String getKey() { return key; }
@@ -20,4 +22,10 @@ public class WorkerSkill {
     public int getLevel() { return level; }
     public Double getWeightOverride() { return weightOverride; }
     public double getWeight() { return weight; }
+
+    /** Inclusive ISO day it became valid; null when unbounded. */
+    public String getValidFrom() { return validFrom; }
+
+    /** Inclusive <em>last</em> day it may be relied on; null when it does not expire. */
+    public String getValidUntil() { return validUntil; }
 }
