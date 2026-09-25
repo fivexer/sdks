@@ -138,6 +138,16 @@ PLANNED = {
     "PlannedWorkerHours": "nested in PlannedHoursResult; PayrollWorker extends it",
     "PlannedShiftBreakdown": "nested in PlannedWorkerHours — one planned shift's minutes by bracket",
     "PlannedDayHours": "nested in PlannedHoursResult — the day series the planning view charts",
+    # Worker schedule preferences (wishes). Workspace and portal wire types,
+    # tracked alongside GET/PUT /v1/roster/terms/{workerId}/preferences and
+    # GET/PUT /v1/portal/preferences + GET /v1/portal/preferences/outcome in
+    # contract/operations.yaml — console/portal-plane authoring, no hand-written
+    # SDK consumes them yet.
+    "WorkerPreferences": "the wish document itself: week days, shift types and dated wishes",
+    "DatedWish": "nested in WorkerPreferences — one dated wish (a day off, or in)",
+    "WishOutcome": "GET /v1/portal/preferences/outcome — one wish, restated against what happened",
+    "PortalPreferences": "GET/PUT /v1/portal/preferences — the worker portal's own read/write shape",
+    "PortalPreferencesOutcome": "GET /v1/portal/preferences/outcome — the period's wishes, resolved",
 }
 
 #: Reachable from a plane the SDKs cover, but never actually on that plane's wire. The server

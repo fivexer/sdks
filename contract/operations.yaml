@@ -1121,6 +1121,12 @@ planned:
     - { method: DELETE, path: "/v1/portal/timeoff/{id}" }
     - { method: GET, path: "/v1/portal/roster" }
     - { method: GET, path: "/v1/portal/roster/planning" }
+    # A worker's own schedule wishes and how the last solve treated them.
+    # Portal-plane, same reasoning as the rest of rostering: the portal has its
+    # own client and nothing else reaches these through an SDK yet.
+    - { method: GET, path: "/v1/portal/preferences" }
+    - { method: PUT, path: "/v1/portal/preferences" }
+    - { method: GET, path: "/v1/portal/preferences/outcome" }
     - { method: GET, path: "/v1/supervisor/timeoff" }
     - { method: POST, path: "/v1/supervisor/timeoff/{id}/approve" }
     - { method: POST, path: "/v1/supervisor/timeoff/{id}/deny" }
@@ -1143,6 +1149,10 @@ planned:
     - { method: PUT, path: "/v1/roster/pay" }
     - { method: GET, path: "/v1/roster/terms" }
     - { method: PUT, path: "/v1/roster/terms/{workerId}" }
+    # A worker's schedule wishes, set on their terms by a supervisor. Same
+    # console-plane authoring surface as the rest of terms; bound with it.
+    - { method: GET, path: "/v1/roster/terms/{workerId}/preferences" }
+    - { method: PUT, path: "/v1/roster/terms/{workerId}/preferences" }
     - { method: GET, path: "/v1/roster/planned-hours" }
     # The holiday calendar: where a workspace's public holidays come from and
     # which days that resolves to. Console-plane like the rest of the terms
