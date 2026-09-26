@@ -49,6 +49,15 @@ final class Task
         /** How far up the escalation ladder this task has already climbed */
         public readonly ?int $escalationLevel = null,
         public readonly ?SlaPolicy $sla = null,
+        /**
+         * When the worker holding this task accepted it (ms epoch).
+         *
+         * Single-task reads only, and accepted tasks only: it is the recorded accept
+         * transition, so elapsed handling time may be counted from it. Null means the hold
+         * is not recorded — a workspace with no control plane keeps no interval log — and
+         * must never be replaced with a substitute start time.
+         */
+        public readonly ?int $acceptedAt = null,
         public readonly ?SchedulePolicy $schedule = null,
         /** Set on workflow-step tasks */
         public readonly ?string $workflowRunId = null,
@@ -88,6 +97,7 @@ final class Task
                 : null,
             escalationLevel: isset($data['escalationLevel']) ? (int) $data['escalationLevel'] : null,
             sla: isset($data['sla']) && \is_array($data['sla']) ? SlaPolicy::fromArray($data['sla']) : null,
+            acceptedAt: isset($data['acceptedAt']) ? (int) $data['acceptedAt'] : null,
             schedule: isset($data['schedule']) && \is_array($data['schedule'])
                 ? SchedulePolicy::fromArray($data['schedule'])
                 : null,

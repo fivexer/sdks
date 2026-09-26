@@ -182,6 +182,28 @@ final class TaskLifecycleTest extends ClientTestCase
         self::assertSame(['workerId' => 'agent_1'], $this->requestBodyJson($this->lastRequest()));
     }
 
+    public function test_a_worker_fails_a_task_with_a_reason(): void
+    {
+        $this->enqueueJson(200, '{"id":"task_8fk2","status":"failed"}');
+
+        $action = $this->client()->tasks()->fail('task_8fk2', 'agent_1', 'nobody home');
+
+        self::assertSame('failed', $action->status);
+        self::assertSame(
+            ['workerId' => 'agent_1', 'reason' => 'nobody home'],
+            $this->requestBodyJson($this->lastRequest()),
+        );
+    }
+
+    public function test_failing_a_task_without_a_reason_omits_the_field(): void
+    {
+        $this->enqueueJson(200, '{"id":"task_8fk2","status":"failed"}');
+
+        $this->client()->tasks()->fail('task_8fk2', 'agent_1');
+
+        self::assertSame(['workerId' => 'agent_1'], $this->requestBodyJson($this->lastRequest()));
+    }
+
     public function test_base_url_trailing_slash_is_stripped(): void
     {
         $client = new \Fivexer\SDK\Fivexer('https://api.fivexer.test/', 'sk_x');

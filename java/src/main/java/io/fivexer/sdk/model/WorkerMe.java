@@ -18,6 +18,10 @@ public class WorkerMe {
     private List<WorkerSkill> skills;
     private Boolean skillSetupPending;
     private String locale;
+    /** Whether the automatic working-time notices still reach this worker's inbox. */
+    private Boolean emailNotices;
+    /** Which kinds of push this worker still wants, keyed by category id. */
+    private java.util.Map<String, Boolean> pushCategories;
 
     public String getWorkerId() { return workerId; }
     public String getLabel() { return label; }
@@ -28,4 +32,6 @@ public class WorkerMe {
     public List<WorkerSkill> getSkills() { return skills; }
     public Boolean getSkillSetupPending() { return skillSetupPending; }
     public String getLocale() { return locale; }
+    public Boolean getEmailNotices() { return emailNotices; }
+    public java.util.Map<String, Boolean> getPushCategories() { return pushCategories; }
 }

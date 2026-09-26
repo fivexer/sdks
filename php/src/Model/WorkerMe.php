@@ -24,6 +24,14 @@ final class WorkerMe
         public readonly array $skills,
         public readonly bool $skillSetupPending,
         public readonly ?string $locale = null,
+        /** Whether the automatic working-time notices still reach this worker's inbox. */
+        public readonly bool $emailNotices = true,
+        /**
+         * Which kinds of push this worker still wants, keyed by category id.
+         *
+         * @var array<string, bool>
+         */
+        public readonly array $pushCategories = [],
     ) {
     }
 
@@ -43,6 +51,11 @@ final class WorkerMe
             skills: Json::parseEach($data, 'skills', [WorkerSkill::class, 'fromArray']),
             skillSetupPending: (bool) ($data['skillSetupPending'] ?? false),
             locale: isset($data['locale']) ? (string) $data['locale'] : null,
+            emailNotices: (bool) ($data['emailNotices'] ?? true),
+            pushCategories: array_map(
+                static fn (mixed $wanted): bool => (bool) $wanted,
+                is_array($data['pushCategories'] ?? null) ? $data['pushCategories'] : [],
+            ),
         );
     }
 }

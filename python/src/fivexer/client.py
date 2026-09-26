@@ -519,6 +519,10 @@ class _Tasks:
     def complete(self, task_id: str, worker_id: str, result: Mapping[str, Any] | None = None) -> TaskAction:
         return TaskAction.from_json(self._c._send(specs.tasks_complete(task_id, worker_id, result)))
 
+    def fail(self, task_id: str, worker_id: str, reason: str | None = None) -> TaskAction:
+        """Report that accepted work could not be done. Only its holder may; counts as a failure."""
+        return TaskAction.from_json(self._c._send(specs.tasks_fail(task_id, worker_id, reason)))
+
     def assign(self, task_id: str, worker_id: str, force: bool | None = None) -> AssignTaskResult:
         """Operator override. ``force`` bypasses paused/backlog/veto/prior-rejection checks."""
         return AssignTaskResult.from_json(self._c._send(specs.tasks_assign(task_id, worker_id, force)))
@@ -1049,6 +1053,9 @@ class _AsyncTasks:
 
     async def complete(self, task_id: str, worker_id: str, result: Mapping[str, Any] | None = None) -> TaskAction:
         return TaskAction.from_json(await self._c._send(specs.tasks_complete(task_id, worker_id, result)))
+
+    async def fail(self, task_id: str, worker_id: str, reason: str | None = None) -> TaskAction:
+        return TaskAction.from_json(await self._c._send(specs.tasks_fail(task_id, worker_id, reason)))
 
     async def assign(self, task_id: str, worker_id: str, force: bool | None = None) -> AssignTaskResult:
         return AssignTaskResult.from_json(await self._c._send(specs.tasks_assign(task_id, worker_id, force)))

@@ -124,6 +124,12 @@ def tasks_complete(task_id: str, worker_id: str, result: Mapping[str, Any] | Non
     return RequestSpec("POST", f"/tasks/{enc(task_id)}/complete", body=body)
 
 
+def tasks_fail(task_id: str, worker_id: str, reason: str | None = None) -> RequestSpec:
+    body = compact({"reason": reason})
+    body["workerId"] = worker_id
+    return RequestSpec("POST", f"/tasks/{enc(task_id)}/fail", body=body)
+
+
 def tasks_assign(task_id: str, worker_id: str, force: bool | None = None) -> RequestSpec:
     body = compact({"force": force})
     body["workerId"] = worker_id

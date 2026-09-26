@@ -38,6 +38,7 @@ class TaskPoliciesTest extends MockServerBase {
         client().tasks().create(new CreateTask(List.of("billing"))
                 .escalation(new EscalationPolicy(60_000)
                         .onNoResponse("block")
+                        .offerCooldownMs(45_000)
                         .priorityBoost(10)
                         .tiers(List.of(List.of("billing"), List.of("billing", "english")))
                         .maxEscalations(2)
@@ -56,6 +57,7 @@ class TaskPoliciesTest extends MockServerBase {
         JsonObject escalation = body.getAsJsonObject("escalation");
         assertEquals(60_000, escalation.get("respondWithinMs").getAsLong());
         assertEquals("block", escalation.get("onNoResponse").getAsString());
+        assertEquals(45_000, escalation.get("offerCooldownMs").getAsLong());
         assertEquals(2, escalation.getAsJsonArray("tiers").size());
         assertEquals("park", escalation.get("onExhausted").getAsString());
 
@@ -192,6 +194,21 @@ class TaskPoliciesTest extends MockServerBase {
         JsonObject recurrence = bodyOf(takeRequest()).getAsJsonObject("recurrence");
         assertEquals(1, recurrence.size());
         assertEquals(60_000, recurrence.get("everyMs").getAsLong());
+    }
+
+    @Test
+    void times_rides_along_as_occurrences_per_period() throws Exception {
+        enqueueJson(202, "{\"id\":\"posts\",\"status\":\"recurring\"}");
+
+        client().tasks().create(new CreateTask(List.of("content"))
+                .recurrence(new RecurrencePolicy(604_800_000).times(2)));
+
+        // Two a week: the period goes on the wire as the caller wrote it, and
+        // the platform is the one that divides it into the gap.
+        JsonObject recurrence = bodyOf(takeRequest()).getAsJsonObject("recurrence");
+        assertEquals(2, recurrence.size());
+        assertEquals(604_800_000, recurrence.get("everyMs").getAsLong());
+        assertEquals(2, recurrence.get("times").getAsInt());
     }
 
     @Test

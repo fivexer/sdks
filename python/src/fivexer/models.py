@@ -169,6 +169,11 @@ class Task:
     # How far up the escalation ladder this task has already climbed
     escalation_level: int | None = None
     sla: SlaPolicy | None = None
+    # When the worker holding this task accepted it (ms epoch). Single-task reads only, and
+    # accepted tasks only: it is the recorded accept transition, so elapsed handling time may
+    # be counted from it. ``None`` means the hold is not recorded — a workspace with no
+    # control plane keeps no interval log — and must never be replaced with a substitute.
+    accepted_at: int | None = None
     schedule: SchedulePolicy | None = None
     # Set on workflow-step tasks: the run and step this task belongs to
     workflow_run_id: str | None = None
@@ -201,6 +206,7 @@ class Task:
             escalation=_policy(data.get("escalation"), EscalationPolicy),
             escalation_level=_int_or_none(data.get("escalationLevel")),
             sla=_policy(data.get("sla"), SlaPolicy),
+            accepted_at=_int_or_none(data.get("acceptedAt")),
             schedule=_policy(data.get("schedule"), SchedulePolicy),
             workflow_run_id=data.get("workflowRunId"),
             workflow_step_id=data.get("workflowStepId"),
@@ -240,6 +246,11 @@ class EscalationPolicy:
     respond_within_ms: int
     # 'block' stops the non-responder winning it back; 'allow' is the default
     on_no_response: str | None = None
+    # Milliseconds the non-responder rests before this task can be offered to them again
+    # (1s-24h). The middle ground between letting them win it back on the next pass and
+    # barring them for good, which when they are the only eligible worker means nobody ever
+    # gets it. Ignored under on_no_response="block".
+    offer_cooldown_ms: int | None = None
     # Added to the task's priority on every escalation, so an aging task outranks fresh work
     priority_boost: float | None = None
     # Tag sets to widen to, one rung per escalation
@@ -252,6 +263,7 @@ class EscalationPolicy:
         payload = compact(
             {
                 "onNoResponse": self.on_no_response,
+                "offerCooldownMs": self.offer_cooldown_ms,
                 "priorityBoost": self.priority_boost,
                 "tiers": self.tiers,
                 "maxEscalations": self.max_escalations,
@@ -267,6 +279,7 @@ class EscalationPolicy:
         return cls(
             respond_within_ms=int(data.get("respondWithinMs", 0)),
             on_no_response=data.get("onNoResponse"),
+            offer_cooldown_ms=_int_or_none(data.get("offerCooldownMs")),
             priority_boost=data.get("priorityBoost"),
             tiers=None if tiers is None else [list(t) for t in tiers],
             max_escalations=_int_or_none(data.get("maxEscalations")),
@@ -349,16 +362,16 @@ class RecurrencePolicy:
     """How a recurring task repeats.
 
     A task created with a recurrence becomes a standing *template*, never itself matchable: the
-    platform materializes each occurrence as an ordinary scheduled task one interval ahead of its
-    window. Occurrences align to ``start_at + k x every_ms`` and never drift, so a template that
-    was down for an hour resumes on the original grid rather than an hour late.
+    platform materializes each occurrence as an ordinary scheduled task one gap ahead of its
+    window. Occurrences align to ``start_at + k x every_ms / times`` and never drift, so a
+    template that was down for an hour resumes on the original grid rather than an hour late.
     """
 
-    # Milliseconds between one occurrence's window opening and the next (min 60s)
+    # The repeating period in ms; with the default times of 1 this is the gap itself (min 60s)
     every_ms: int
     # Epoch ms the first window opens. Default: now
     start_at: int | None = None
-    # Offer window per occurrence; must be shorter than every_ms
+    # Offer window per occurrence; must be shorter than the gap (every_ms / times)
     window_ms: int | None = None
     # What an unserved window does to that occurrence: 'park' | 'drop'
     on_miss: str | None = None
@@ -367,10 +380,15 @@ class RecurrencePolicy:
     max_occurrences: int | None = None
     # 'skip' (default) resumes without back-filling elapsed slots; 'all' materializes them
     catch_up: str | None = None
+    # Occurrences per period, spread evenly across it: 'twice a week' is every_ms a week, times 2.
+    # The gap (every_ms / times) is what must be at least 60s. 1-1000, default 1. Last in the
+    # field order so positional construction keeps meaning what it did before it existed.
+    times: int | None = None
 
     def to_json(self) -> dict[str, Any]:
         payload = compact(
             {
+                "times": self.times,
                 "startAt": self.start_at,
                 "windowMs": self.window_ms,
                 "onMiss": self.on_miss,
@@ -386,6 +404,7 @@ class RecurrencePolicy:
     def from_json(cls, data: Mapping[str, Any]) -> RecurrencePolicy:
         return cls(
             every_ms=int(data.get("everyMs", 0)),
+            times=_int_or_none(data.get("times")),
             start_at=_int_or_none(data.get("startAt")),
             window_ms=_int_or_none(data.get("windowMs")),
             on_miss=data.get("onMiss"),
@@ -2522,6 +2541,18 @@ class WorkerMe:
     skills: list[WorkerSkill] = field(default_factory=list)
     skill_setup_pending: bool = False
     locale: str | None = None
+    """Whether the automatic working-time notices still reach this worker's inbox.
+
+    True on a server too old to have the switch, which is what that server does.
+    """
+    email_notices: bool = True
+    """Which kinds of push this worker still wants, keyed by category id.
+
+    ``work``, ``task-updates``, ``rota``, ``cover``. Empty against a server too
+    old to have the setting, which is not the same as "everything off" — that
+    server simply sends everything.
+    """
+    push_categories: dict[str, bool] = field(default_factory=dict)
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerMe:
@@ -2535,6 +2566,10 @@ class WorkerMe:
             skills=_each(data, "skills", WorkerSkill.from_json),
             skill_setup_pending=bool(data.get("skillSetupPending", False)),
             locale=data.get("locale"),
+            email_notices=bool(data.get("emailNotices", True)),
+            push_categories={
+                str(key): bool(value) for key, value in (data.get("pushCategories") or {}).items()
+            },
         )
 
 

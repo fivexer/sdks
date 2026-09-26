@@ -172,4 +172,25 @@ class TaskLifecycleTest extends MockServerBase {
 
         assertEquals("{\"workerId\":\"agent_1\"}", takeRequest().getBody().readUtf8());
     }
+
+    @Test
+    void a_worker_fails_a_task_with_a_reason() throws Exception {
+        enqueueJson(200, "{\"id\":\"task_8fk2\",\"status\":\"failed\"}");
+
+        TaskAction result = client().tasks().fail("task_8fk2", "agent_1", "nobody home");
+
+        assertEquals("failed", result.getStatus());
+        var request = takeRequest();
+        assertEquals("/v1/tasks/task_8fk2/fail", request.getPath());
+        assertEquals("{\"workerId\":\"agent_1\",\"reason\":\"nobody home\"}", request.getBody().readUtf8());
+    }
+
+    @Test
+    void failing_without_a_reason_omits_the_field() throws Exception {
+        enqueueJson(200, "{\"id\":\"task_8fk2\",\"status\":\"failed\"}");
+
+        client().tasks().fail("task_8fk2", "agent_1");
+
+        assertEquals("{\"workerId\":\"agent_1\"}", takeRequest().getBody().readUtf8());
+    }
 }

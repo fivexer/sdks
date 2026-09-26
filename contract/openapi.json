@@ -222,6 +222,11 @@
                           "allow"
                         ]
                       },
+                      "offerCooldownMs": {
+                        "type": "number",
+                        "minimum": 1000,
+                        "maximum": 86400000
+                      },
                       "priorityBoost": {
                         "type": "number"
                       },
@@ -323,6 +328,37 @@
                       }
                     }
                   },
+                  "slot": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "startAt",
+                      "durationMs"
+                    ],
+                    "properties": {
+                      "startAt": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "durationMs": {
+                        "type": "number",
+                        "minimum": 60000,
+                        "maximum": 86400000
+                      },
+                      "bookAheadMs": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "onUnbooked": {
+                        "type": "string",
+                        "enum": [
+                          "queue",
+                          "park",
+                          "drop"
+                        ]
+                      }
+                    }
+                  },
                   "recurrence": {
                     "type": "object",
                     "additionalProperties": false,
@@ -334,6 +370,11 @@
                         "type": "number",
                         "minimum": 60000,
                         "maximum": 31536000000
+                      },
+                      "times": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
                       },
                       "startAt": {
                         "type": "number",
@@ -582,6 +623,11 @@
                                 "allow"
                               ]
                             },
+                            "offerCooldownMs": {
+                              "type": "number",
+                              "minimum": 1000,
+                              "maximum": 86400000
+                            },
                             "priorityBoost": {
                               "type": "number"
                             },
@@ -683,6 +729,37 @@
                             }
                           }
                         },
+                        "slot": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "startAt",
+                            "durationMs"
+                          ],
+                          "properties": {
+                            "startAt": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "durationMs": {
+                              "type": "number",
+                              "minimum": 60000,
+                              "maximum": 86400000
+                            },
+                            "bookAheadMs": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "onUnbooked": {
+                              "type": "string",
+                              "enum": [
+                                "queue",
+                                "park",
+                                "drop"
+                              ]
+                            }
+                          }
+                        },
                         "recurrence": {
                           "type": "object",
                           "additionalProperties": false,
@@ -694,6 +771,11 @@
                               "type": "number",
                               "minimum": 60000,
                               "maximum": 31536000000
+                            },
+                            "times": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
                             },
                             "startAt": {
                               "type": "number",
@@ -811,7 +893,7 @@
         }
       },
       "patch": {
-        "summary": "Update a queued task priority (operator bump)",
+        "summary": "Update a live task (routing, title, description, context)",
         "tags": [
           "tasks"
         ],
@@ -822,12 +904,77 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "priority"
-                ],
+                "minProperties": 1,
                 "properties": {
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "minItems": 1,
+                    "maxItems": 32
+                  },
                   "priority": {
                     "type": "number"
+                  },
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 10000
+                  },
+                  "context": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "references": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "url"
+                      ],
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2048
+                        },
+                        "label": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "contentType": {
+                          "type": "string",
+                          "maxLength": 128
+                        }
+                      }
+                    }
+                  },
+                  "meta": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
                   }
                 }
               }
@@ -1039,6 +1186,159 @@
         }
       }
     },
+    "/v1/tasks/bookings": {
+      "get": {
+        "summary": "Booked appointments in a window \u2014 the planner calendar",
+        "tags": [
+          "tasks"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "from",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "to",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "workerId",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/booking/candidates": {
+      "get": {
+        "summary": "Rank workers for a task\u2019s appointment, with the reason each is or is not bookable",
+        "tags": [
+          "tasks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/booking": {
+      "post": {
+        "summary": "Reserve a worker for a task\u2019s appointment",
+        "tags": [
+          "tasks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "workerId"
+                ],
+                "properties": {
+                  "workerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Release a task\u2019s reservation",
+        "tags": [
+          "tasks"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/tasks/recurring": {
       "get": {
         "summary": "List recurring task templates, soonest next occurrence first",
@@ -1196,6 +1496,11 @@
                           "allow"
                         ]
                       },
+                      "offerCooldownMs": {
+                        "type": "number",
+                        "minimum": 1000,
+                        "maximum": 86400000
+                      },
                       "priorityBoost": {
                         "type": "number"
                       },
@@ -1291,6 +1596,37 @@
                       "onMiss": {
                         "type": "string",
                         "enum": [
+                          "park",
+                          "drop"
+                        ]
+                      }
+                    }
+                  },
+                  "slot": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "startAt",
+                      "durationMs"
+                    ],
+                    "properties": {
+                      "startAt": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "durationMs": {
+                        "type": "number",
+                        "minimum": 60000,
+                        "maximum": 86400000
+                      },
+                      "bookAheadMs": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "onUnbooked": {
+                        "type": "string",
+                        "enum": [
+                          "queue",
                           "park",
                           "drop"
                         ]
@@ -1525,6 +1861,58 @@
         }
       }
     },
+    "/v1/tasks/{id}/fail": {
+      "post": {
+        "summary": "Worker reports that an accepted task could not be done",
+        "tags": [
+          "tasks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "workerId"
+                ],
+                "properties": {
+                  "workerId": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/tasks/suggest-workers": {
       "post": {
         "summary": "Preview the best workers for a hypothetical task",
@@ -1621,6 +2009,97 @@
             }
           }
         },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/tasks/history": {
+      "get": {
+        "summary": "List finished tasks (paginated)",
+        "tags": [
+          "tasks"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "workerId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "tag",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "q",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
         "security": [
           {
             "apiKey": []
@@ -2191,6 +2670,12 @@
                   },
                   "available": {
                     "type": "boolean"
+                  },
+                  "locale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 }
               }
@@ -2356,6 +2841,12 @@
                   },
                   "available": {
                     "type": "boolean"
+                  },
+                  "locale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 }
               }
@@ -2384,16 +2875,20 @@
         }
       },
       "delete": {
-        "summary": "Remove a worker",
+        "summary": "Remove (offboard) a worker",
         "tags": [
           "workers"
         ],
-        "security": [
-          {
-            "apiKey": []
-          }
-        ],
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "lastDay",
+            "required": false
+          },
           {
             "schema": {
               "type": "string"
@@ -2401,6 +2896,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
           }
         ],
         "responses": {
@@ -2525,6 +3025,50 @@
         }
       }
     },
+    "/v1/workers/{id}/task-time": {
+      "get": {
+        "summary": "What one worker spent time on, measured from task transitions",
+        "tags": [
+          "workers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/workers/{id}/time-entries": {
       "get": {
         "summary": "The shift and break log for one worker over a window",
@@ -2610,6 +3154,42 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 500
+                  },
+                  "breaks": {
+                    "type": "array",
+                    "maxItems": 24,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "startedAt",
+                        "endedAt"
+                      ],
+                      "properties": {
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "endedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1000
+                  },
+                  "taskId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
                   }
                 }
               }
@@ -2677,8 +3257,136 @@
                       "shift",
                       "break"
                     ]
+                  },
+                  "breaks": {
+                    "type": "array",
+                    "maxItems": 24,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "startedAt",
+                        "endedAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "endedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1000
+                  },
+                  "taskId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
                   }
                 }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "entryId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/workers/{id}/time-entries/{entryId}/metadata": {
+      "patch": {
+        "summary": "Add a description or task link to a recorded shift or break",
+        "tags": [
+          "workers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "shift",
+                      "break"
+                    ]
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1000
+                  },
+                  "taskId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "description"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "taskId"
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2732,6 +3440,176 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/workers/{id}/offboarding": {
+      "get": {
+        "summary": "Preview what removing a worker hands back and frees",
+        "tags": [
+          "workers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "lastDay",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/workers/links": {
+      "get": {
+        "summary": "List worker \u2194 connector user links",
+        "tags": [
+          "workers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "in": "query",
+            "name": "connector",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/workers/{id}/links/{connector}": {
+      "put": {
+        "summary": "Link a worker to their user in a connected system",
+        "tags": [
+          "workers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "vendorUserId"
+                ],
+                "properties": {
+                  "vendorUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 64
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "in": "path",
+            "name": "connector",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a worker\u2019s link to a connected system",
+        "tags": [
+          "workers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "in": "path",
+            "name": "connector",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
           }
         ],
         "responses": {
@@ -3471,6 +4349,377 @@
             "name": "limit",
             "required": false
           }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/skill-imports": {
+      "post": {
+        "summary": "Map uploaded rows onto the skill taxonomy",
+        "tags": [
+          "skill-imports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rows"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "rows": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 250,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "text"
+                      ],
+                      "properties": {
+                        "workerId": {
+                          "type": "string",
+                          "maxLength": 128
+                        },
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "context": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "thresholds": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "applyAt": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      },
+                      "reviewAt": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "List recent skill imports",
+        "tags": [
+          "skill-imports"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/skill-imports/{importId}/rows": {
+      "get": {
+        "summary": "The review queue for one import",
+        "tags": [
+          "skill-imports"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "importId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/skill-imports/{importId}/rows/{rowId}/confirm": {
+      "post": {
+        "summary": "Record a human's answer for one row",
+        "tags": [
+          "skill-imports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "answer"
+                ],
+                "properties": {
+                  "answer": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "importId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "rowId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/intake/messages": {
+      "post": {
+        "summary": "Classify an inbound message into a task, or the tray",
+        "tags": [
+          "intake"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "channel": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "sender": {
+                    "type": "string",
+                    "maxLength": 320
+                  },
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 320
+                    }
+                  },
+                  "thresholds": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "applyAt": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      },
+                      "reviewAt": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/intake/tray": {
+      "get": {
+        "summary": "Messages waiting for a human",
+        "tags": [
+          "intake"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/intake/tray/{messageId}/resolve": {
+      "post": {
+        "summary": "Accept a tray message as a task, or dismiss it",
+        "tags": [
+          "intake"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "accept",
+                      "dismiss"
+                    ]
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "skillId": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "priority": {
+                    "type": "number"
+                  },
+                  "priorityLevel": {
+                    "type": "string",
+                    "enum": [
+                      "routine",
+                      "this_week",
+                      "today",
+                      "blocking"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "messageId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/suggestions": {
+      "get": {
+        "summary": "Machine suggestions, with the confidence and threshold behind each",
+        "tags": [
+          "intake"
         ],
         "security": [
           {
@@ -4525,6 +5774,53 @@
         }
       }
     },
+    "/v1/team/time/payroll/export": {
+      "get": {
+        "summary": "The period as a vendor-shaped CSV",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "from",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "to",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "profile",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/team/time/payroll": {
       "get": {
         "summary": "Recorded hours priced by the pay brackets, set against the published rota",
@@ -4640,6 +5936,129 @@
         }
       }
     },
+    "/v1/team/time/payroll/analysis": {
+      "get": {
+        "summary": "What payroll has cost, from the ledger of closed periods",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "period",
+                "jurisdiction",
+                "worker",
+                "component",
+                "taxYear",
+                "currency"
+              ],
+              "default": "period"
+            },
+            "in": "query",
+            "name": "groupBy",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "workerId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 6
+            },
+            "in": "query",
+            "name": "jurisdiction",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 8
+            },
+            "in": "query",
+            "name": "taxYearId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gross",
+                "employee",
+                "employer"
+              ]
+            },
+            "in": "query",
+            "name": "side",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/team/time/closures/{closureId}/statutory": {
+      "get": {
+        "summary": "The statutory figures a closed period was signed off on",
+        "tags": [
+          "stats"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "closureId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/team/time/close": {
       "post": {
         "summary": "Close a pay period, so its records can no longer be changed",
@@ -4669,6 +6088,9 @@
                   "note": {
                     "type": "string",
                     "maxLength": 500
+                  },
+                  "force": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -6085,6 +7507,181 @@
         }
       }
     },
+    "/v1/portal/calendar": {
+      "get": {
+        "summary": "My Google Calendar connection",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Choose how my busy time binds the roster",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "busyTimeMode"
+                ],
+                "properties": {
+                  "busyTimeMode": {
+                    "type": "string",
+                    "enum": [
+                      "avoid",
+                      "unavailable"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Disconnect my Google Calendar",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/calendar/start": {
+      "post": {
+        "summary": "Connect my Google Calendar",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "returnOrigin",
+                  "returnPath"
+                ],
+                "properties": {
+                  "returnOrigin": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "returnPath": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/calendar/complete": {
+      "post": {
+        "summary": "Finish connecting my Google Calendar",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "completionKey"
+                ],
+                "properties": {
+                  "completionKey": {
+                    "type": "string",
+                    "minLength": 40,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/calendar/sync": {
+      "post": {
+        "summary": "Sync my Google Calendar now",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/portal/workers/{id}/queue": {
       "get": {
         "summary": "A worker's current task queue",
@@ -6104,6 +7701,49 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/tasks": {
+      "post": {
+        "summary": "Create a minimal task owned and accepted by the authenticated worker",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "timerEntryId": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
           }
         ],
         "responses": {
@@ -6543,6 +8183,50 @@
             "description": "Default Response"
           }
         }
+      },
+      "patch": {
+        "summary": "Set the signed-in worker\u2019s language and mail preference",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "locale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "emailNotices": {
+                    "type": "boolean"
+                  },
+                  "pushCategories": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
       }
     },
     "/v1/portal/voice/ice": {
@@ -6668,6 +8352,184 @@
             }
           }
         },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/timer": {
+      "get": {
+        "summary": "The timer this worker has running, if any",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/timer/start": {
+      "post": {
+        "summary": "Start the worker\u2019s own timer \u2014 optionally against a task they hold",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "taskId": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/timer/stop": {
+      "post": {
+        "summary": "Stop the running timer \u2014 the entry is saved whether or not it has a name",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/timer/entries/{entryId}": {
+      "patch": {
+        "summary": "Name a saved entry, or attach it to a task, after the fact",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "taskId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "label"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "taskId"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "entryId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/time/log": {
+      "get": {
+        "summary": "What the worker spent a window on, per task and otherwise",
+        "tags": [
+          "worker-portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          }
+        ],
         "security": [
           {
             "workerToken": []
@@ -6810,6 +8672,223 @@
         "security": [
           {
             "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Record a shift the worker worked but never clocked",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "startedAt",
+                  "endedAt",
+                  "note"
+                ],
+                "properties": {
+                  "startedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "endedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "breaks": {
+                    "type": "array",
+                    "maxItems": 24,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "startedAt",
+                        "endedAt"
+                      ],
+                      "properties": {
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "endedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1000
+                  },
+                  "taskId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/time-entries/{entryId}": {
+      "patch": {
+        "summary": "Correct the worker's own shift, or add a description or task link to it",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "shift",
+                      "break"
+                    ]
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1000
+                  },
+                  "taskId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "startedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "endedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "breaks": {
+                    "type": "array",
+                    "maxItems": 24,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "startedAt",
+                        "endedAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "endedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "description"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "taskId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "startedAt"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "endedAt"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "breaks"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "entryId",
+            "required": true
           }
         ],
         "responses": {
@@ -7197,6 +9276,18 @@
                       "other"
                     ]
                   },
+                  "leaveTypeId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 64
+                  },
+                  "dayPortion": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
                   "note": {
                     "type": [
                       "string",
@@ -7209,6 +9300,183 @@
             }
           }
         },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/time-entries/attest": {
+      "post": {
+        "summary": "Confirm or dispute your recorded hours for a period",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fromDate",
+                  "toDate",
+                  "state"
+                ],
+                "properties": {
+                  "fromDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "toDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "confirmed",
+                      "disputed"
+                    ]
+                  },
+                  "note": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1000
+                  },
+                  "attestedMinutes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "What you have said about a period\u2019s hours",
+        "tags": [
+          "worker-portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "fromDate",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "toDate",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/leave": {
+      "get": {
+        "summary": "Leave types and this worker\u2019s balances",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/leave/quote": {
+      "get": {
+        "summary": "What a range of leave would cost this worker",
+        "tags": [
+          "worker-portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "startDate",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "in": "query",
+            "name": "endDate",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "leaveTypeId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "in": "query",
+            "name": "dayPortion",
+            "required": false
+          }
+        ],
         "security": [
           {
             "workerToken": []
@@ -7249,6 +9517,68 @@
         }
       }
     },
+    "/v1/portal/preferences": {
+      "get": {
+        "summary": "My schedule wishes",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace my schedule wishes",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/preferences/outcome": {
+      "get": {
+        "summary": "How my schedule wishes went",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/portal/roster/planning": {
       "get": {
         "summary": "Roster periods currently open for planning",
@@ -7258,6 +9588,89 @@
         "security": [
           {
             "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/bookings": {
+      "get": {
+        "summary": "The authenticated worker's booked appointments",
+        "tags": [
+          "worker-portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/me/bookings/{taskId}/hand-back": {
+      "post": {
+        "summary": "Hand back an appointment booked onto me, with a reason",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "taskId",
+            "required": true
           }
         ],
         "responses": {
@@ -7426,6 +9839,239 @@
             },
             "in": "path",
             "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/open-shifts": {
+      "get": {
+        "summary": "Shifts posted to the team that you could take",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/open-shifts/{openingId}/claim": {
+      "post": {
+        "summary": "Take a shift posted to the team",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "openingId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/swaps": {
+      "get": {
+        "summary": "Shift swaps you proposed or were asked about",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Offer one of your shifts to a colleague",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "shiftInstanceId",
+                  "withWorkerId"
+                ],
+                "properties": {
+                  "shiftInstanceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "withWorkerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "forShiftInstanceId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 256
+                  },
+                  "note": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/swaps/{id}/accept": {
+      "post": {
+        "summary": "Accept a shift swap",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/swaps/{id}/decline": {
+      "post": {
+        "summary": "Decline a shift swap",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/swaps/{id}/withdraw": {
+      "post": {
+        "summary": "Take back a swap you proposed",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/shifts/{shiftInstanceId}/takers": {
+      "get": {
+        "summary": "Colleagues who could take one of your shifts",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "shiftInstanceId",
             "required": true
           }
         ],
@@ -8989,6 +11635,71 @@
         }
       }
     },
+    "/admin/workspaces/{id}/usage/reset": {
+      "post": {
+        "summary": "Reset the running month's usage meter for a workspace (operator goodwill)",
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 500
+                  },
+                  "actorLabel": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{6}$"
+            },
+            "in": "query",
+            "name": "period",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/admin/workspaces/{id}/usage": {
       "get": {
         "summary": "Monthly usage for a workspace, newest first (current month is live)",
@@ -9048,6 +11759,96 @@
             "adminToken": []
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/auth/google/start": {
+      "post": {
+        "summary": "Start Google sign-in for an existing account",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "returnOrigin"
+                ],
+                "properties": {
+                  "returnOrigin": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "login",
+                      "signup"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "path": {
+                    "type": "string",
+                    "enum": [
+                      "routing",
+                      "roster",
+                      "everything"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/auth/google/complete": {
+      "post": {
+        "summary": "Exchange a completed Google sign-in for a Fivexer session",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "completionKey"
+                ],
+                "properties": {
+                  "completionKey": {
+                    "type": "string",
+                    "minLength": 40,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -9369,6 +12170,116 @@
         }
       }
     },
+    "/auth/google/link": {
+      "get": {
+        "summary": "Whether Google is linked to the signed-in account",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Start linking Google to the signed-in account",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "returnOrigin"
+                ],
+                "properties": {
+                  "returnOrigin": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unlink Google from the signed-in account (requires a recent session)",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/auth/google/link/complete": {
+      "post": {
+        "summary": "Finish linking Google to the signed-in account",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "completionKey"
+                ],
+                "properties": {
+                  "completionKey": {
+                    "type": "string",
+                    "minLength": 40,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/console/workspaces/{workspaceId}/audit-events": {
       "get": {
         "summary": "Access log for this workspace",
@@ -9485,6 +12396,41 @@
         "tags": [
           "console"
         ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update the signed-in user\u2019s preferences",
+        "tags": [
+          "console"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "locale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
         "security": [
           {
             "session": []
@@ -10335,6 +13281,9 @@
                       "overview": {
                         "type": "boolean"
                       },
+                      "my-day": {
+                        "type": "boolean"
+                      },
                       "live": {
                         "type": "boolean"
                       },
@@ -10473,6 +13422,87 @@
                     "type": "number",
                     "minimum": 60000,
                     "maximum": 86400000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/console/workspaces/{workspaceId}/decisions-config": {
+      "get": {
+        "summary": "Confidence thresholds for machine suggestions",
+        "tags": [
+          "console"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Set the confidence thresholds",
+        "tags": [
+          "console"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "applyAt",
+                  "reviewAt"
+                ],
+                "properties": {
+                  "applyAt": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "reviewAt": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
                   }
                 }
               }
@@ -10855,6 +13885,11 @@
                           "allow"
                         ]
                       },
+                      "offerCooldownMs": {
+                        "type": "number",
+                        "minimum": 1000,
+                        "maximum": 86400000
+                      },
                       "priorityBoost": {
                         "type": "number"
                       },
@@ -10934,6 +13969,26 @@
                         ]
                       }
                     }
+                  },
+                  "tags": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 32
+                  },
+                  "priority": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1000000
                   }
                 }
               }
@@ -11859,6 +14914,10 @@
                     "maxLength": 9
                   },
                   "appShortName": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "defaultLocale": {
                     "type": "string",
                     "maxLength": 32
                   }

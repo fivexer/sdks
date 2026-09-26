@@ -183,6 +183,24 @@ def test_completing_a_task_without_a_result_omits_the_field(server, client):
     assert read_body(server.last) == {"workerId": "agent_1"}
 
 
+def test_a_worker_fails_a_task_with_a_reason(server, client):
+    server.set_response(json_response(200, {"id": "task_8fk2", "status": "failed"}))
+
+    result = client.tasks.fail("task_8fk2", "agent_1", reason="nobody home")
+
+    assert result.status == "failed"
+    assert server.last.url.path == "/v1/tasks/task_8fk2/fail"
+    assert read_body(server.last) == {"workerId": "agent_1", "reason": "nobody home"}
+
+
+def test_failing_a_task_without_a_reason_omits_the_field(server, client):
+    server.set_response(json_response(200, {"id": "task_8fk2", "status": "failed"}))
+
+    client.tasks.fail("task_8fk2", "agent_1")
+
+    assert read_body(server.last) == {"workerId": "agent_1"}
+
+
 def test_base_url_trailing_slash_is_stripped(server):
     transport = httpx.MockTransport(lambda r: json_response(200, {"tasks": [], "nextCursor": None, "hasMore": False}))
     from fivexer import Fivexer

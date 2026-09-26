@@ -156,6 +156,22 @@ public final class Tasks {
     }
 
     /**
+     * Report that accepted work could not be done. Only the worker holding it may fail it; the
+     * task closes as {@code failed} and counts as a failure for routing.
+     */
+    public TaskAction fail(String taskId, String workerId, String reason) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("workerId", workerId);
+        if (reason != null) body.put("reason", reason);
+        return client.request("POST", "/tasks/" + Json.enc(taskId) + "/fail",
+                Json.write(body), null, TaskAction.class, false);
+    }
+
+    public TaskAction fail(String taskId, String workerId) {
+        return fail(taskId, workerId, null);
+    }
+
+    /**
      * Operator override: hand a task to a specific worker. Queued tasks go through the same
      * claim gate as organic matching; a pending task is transferred and its expiry clock
      * restarts. The result names the worker it was taken from, if any.

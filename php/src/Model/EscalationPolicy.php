@@ -28,12 +28,28 @@ final class EscalationPolicy
         private ?int $maxEscalations = null,
         /** Where an exhausted ladder leaves the task: 'queue' or 'park' */
         private ?string $onExhausted = null,
+        /**
+         * Milliseconds the non-responder rests before this task can be offered to them again
+         * (1s–24h). The middle ground between letting them win it back on the next pass and
+         * barring them for good — which, when they are the only eligible worker, means nobody
+         * ever gets it. Ignored under `onNoResponse('block')`.
+         *
+         * Last in the list so positional callers written against the earlier signature keep
+         * working.
+         */
+        private ?int $offerCooldownMs = null,
     ) {
     }
 
     public function onNoResponse(string $onNoResponse): self
     {
         $this->onNoResponse = $onNoResponse;
+        return $this;
+    }
+
+    public function offerCooldownMs(int $offerCooldownMs): self
+    {
+        $this->offerCooldownMs = $offerCooldownMs;
         return $this;
     }
 
@@ -67,6 +83,7 @@ final class EscalationPolicy
     {
         $payload = Json::compact([
             'onNoResponse' => $this->onNoResponse,
+            'offerCooldownMs' => $this->offerCooldownMs,
             'priorityBoost' => $this->priorityBoost,
             'tiers' => $this->tiers,
             'maxEscalations' => $this->maxEscalations,
@@ -88,6 +105,7 @@ final class EscalationPolicy
             $tiers,
             isset($data['maxEscalations']) ? (int) $data['maxEscalations'] : null,
             isset($data['onExhausted']) ? (string) $data['onExhausted'] : null,
+            isset($data['offerCooldownMs']) ? (int) $data['offerCooldownMs'] : null,
         );
     }
 }

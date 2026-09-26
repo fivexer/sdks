@@ -4,14 +4,15 @@ package io.fivexer.sdk.model;
  * How a recurring task repeats.
  *
  * <p>A task created with a recurrence becomes a standing <em>template</em>, never itself
- * matchable: the platform materializes each occurrence as an ordinary scheduled task one
- * interval ahead of its window. Occurrences align to {@code startAt + k × everyMs} and never
+ * matchable: the platform materializes each occurrence as an ordinary scheduled task one gap
+ * ahead of its window. Occurrences align to {@code startAt + k × everyMs / times} and never
  * drift, so a template that was down for an hour resumes on the original grid rather than an
  * hour late.
  */
 public class RecurrencePolicy {
 
     private Long everyMs;
+    private Integer times;
     private Long startAt;
     private Long windowMs;
     private String onMiss;
@@ -19,7 +20,7 @@ public class RecurrencePolicy {
     private Integer maxOccurrences;
     private String catchUp;
 
-    /** @param everyMs milliseconds between one occurrence's window opening and the next (min 60s) */
+    /** @param everyMs the repeating period in ms; with the default times of 1, the gap itself (min 60s) */
     public RecurrencePolicy(long everyMs) {
         this.everyMs = everyMs;
     }
@@ -28,6 +29,7 @@ public class RecurrencePolicy {
     RecurrencePolicy() {}
 
     public Long getEveryMs() { return everyMs; }
+    public Integer getTimes() { return times; }
     public Long getStartAt() { return startAt; }
     public Long getWindowMs() { return windowMs; }
     public String getOnMiss() { return onMiss; }
@@ -35,10 +37,17 @@ public class RecurrencePolicy {
     public Integer getMaxOccurrences() { return maxOccurrences; }
     public String getCatchUp() { return catchUp; }
 
+    /**
+     * Occurrences per period, spread evenly across it: "twice a week" is a week of
+     * {@code everyMs} and {@code times} of 2. The gap — {@code everyMs / times} — is what must
+     * be at least 60s, and what {@code windowMs} must be shorter than. 1–1000, default 1.
+     */
+    public RecurrencePolicy times(int times) { this.times = times; return this; }
+
     /** Epoch ms the first window opens. Default: now. */
     public RecurrencePolicy startAt(long startAt) { this.startAt = startAt; return this; }
 
-    /** Offer window per occurrence; must be shorter than {@code everyMs}. */
+    /** Offer window per occurrence; must be shorter than the gap ({@code everyMs / times}). */
     public RecurrencePolicy windowMs(long windowMs) { this.windowMs = windowMs; return this; }
 
     /** What an unserved window does to that occurrence: {@code "park"} | {@code "drop"}. */

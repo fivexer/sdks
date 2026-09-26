@@ -84,6 +84,15 @@ groups:
             path: /tasks/{id}/complete
             body: "{ workerId, result? }"
             response: "{ id, status: completed }"
+          - name: tasks.fail
+            method: POST
+            path: /tasks/{id}/fail
+            body: "{ workerId, reason? }"
+            response: "{ id, status: failed }"
+            notes: >-
+                Report that accepted work could not be done. Only the worker holding it may fail it;
+                the task closes as `failed` and counts as a failure for routing. 409 for anyone else
+                or for work that is not accepted.
           - name: tasks.assign
             method: POST
             path: /tasks/{id}/assign
@@ -97,7 +106,11 @@ groups:
             method: PATCH
             path: /tasks/{id}
             body: "{ priority }"
-            response: "{ id, priority }"
+            response: UpdateTaskResult
+            notes: >-
+                The reference TS SDK also binds the full edit as `tasks.update` (tags, title,
+                description, context, references, meta on the same PATCH). Planned for Python,
+                Java and PHP with UpdateTaskInput / UpdateTaskResult (see check-field-parity.py).
           - name: tasks.suggestWorkers
             method: POST
             path: /tasks/suggest-workers
@@ -845,13 +858,18 @@ groups:
           - name: worker.setLocale
             method: PATCH
             path: /portal/me
-            body: "{ locale }"
-            response: "{ workerId, locale }"
+            body: "{ locale?, emailNotices? }"
+            response: "{ workerId, locale, emailNotices }"
             notes: >-
                 The worker's own language, stored on their identity. `null` clears it and
                 returns them to the portal's published default. Server-side too: push
                 notification copy and the invite email read this, because they are composed
                 in background jobs with no request locale to read.
+                The same PATCH carries `emailNotices`, the worker's switch for the automatic
+                working-time notices ("your shift is still open"); it silences those warnings
+                only, never the mail sent when the platform closes a record at its cap, which
+                reports a change to their hours. Every SDK reads it back on `worker.me`; only
+                the TypeScript one sets it (`setEmailNotices`) — the other three are a debt.
           - name: worker.skillCatalog
             method: GET
             path: /portal/skills
@@ -1173,6 +1191,71 @@ planned:
     - { method: GET, path: "/v1/workers/{id}/time-corrections" }
     - { method: GET, path: "/v1/team/time/payroll" }
     - { method: GET, path: "/v1/team/time/closures" }
+    # Connector links: "this worker is that person in HubSpot / Jira / …", so a
+    # worker who was here before a system was connected is not imported twice.
+    # Reachable from the TS SDK (`workers.links` / `link` / `unlink`) and driven by
+    # the console's import review; nothing hand-written consumes them yet.
+    - { method: GET, path: "/v1/workers/links" }
+    - { method: PUT, path: "/v1/workers/{id}/links/{connector}" }
+    - { method: DELETE, path: "/v1/workers/{id}/links/{connector}" }
+    # The worker portal's own surface: calendar sync, leave, bookings, the
+    # personal time log and timer, open shifts and swaps. The portal has its own
+    # client and nothing hand-written reaches these through an SDK yet; they bind
+    # with the rest of the portal plane.
+    - { method: GET, path: "/v1/portal/calendar" }
+    - { method: PATCH, path: "/v1/portal/calendar" }
+    - { method: DELETE, path: "/v1/portal/calendar" }
+    - { method: POST, path: "/v1/portal/calendar/start" }
+    - { method: POST, path: "/v1/portal/calendar/complete" }
+    - { method: POST, path: "/v1/portal/calendar/sync" }
+    - { method: GET, path: "/v1/portal/leave" }
+    - { method: GET, path: "/v1/portal/leave/quote" }
+    - { method: GET, path: "/v1/portal/me/bookings" }
+    - { method: POST, path: "/v1/portal/me/bookings/{taskId}/hand-back" }
+    - { method: POST, path: "/v1/portal/me/tasks" }
+    - { method: POST, path: "/v1/portal/me/time-entries" }
+    - { method: PATCH, path: "/v1/portal/me/time-entries/{entryId}" }
+    - { method: GET, path: "/v1/portal/me/time-entries/attest" }
+    - { method: POST, path: "/v1/portal/me/time-entries/attest" }
+    - { method: GET, path: "/v1/portal/me/time/log" }
+    - { method: GET, path: "/v1/portal/me/timer" }
+    - { method: POST, path: "/v1/portal/me/timer/start" }
+    - { method: POST, path: "/v1/portal/me/timer/stop" }
+    - { method: PATCH, path: "/v1/portal/me/timer/entries/{entryId}" }
+    - { method: GET, path: "/v1/portal/roster/open-shifts" }
+    - { method: POST, path: "/v1/portal/roster/open-shifts/{openingId}/claim" }
+    - { method: GET, path: "/v1/portal/roster/shifts/{shiftInstanceId}/takers" }
+    - { method: GET, path: "/v1/portal/roster/swaps" }
+    - { method: POST, path: "/v1/portal/roster/swaps" }
+    - { method: POST, path: "/v1/portal/roster/swaps/{id}/accept" }
+    - { method: POST, path: "/v1/portal/roster/swaps/{id}/decline" }
+    - { method: POST, path: "/v1/portal/roster/swaps/{id}/withdraw" }
+    # Task timeslots and advance booking, and the finished-task history. Reachable
+    # from the TS SDK and driven by the console; they bind with the task surface.
+    - { method: GET, path: "/v1/tasks/bookings" }
+    - { method: POST, path: "/v1/tasks/{id}/booking" }
+    - { method: DELETE, path: "/v1/tasks/{id}/booking" }
+    - { method: GET, path: "/v1/tasks/{id}/booking/candidates" }
+    - { method: GET, path: "/v1/tasks/history" }
+    # Working time beyond the record itself: statutory payroll figures, payroll
+    # analysis and export, per-worker task time, entry metadata and the offboarding
+    # preview. Console-plane, and the wage-figure caution above applies.
+    - { method: GET, path: "/v1/team/time/closures/{closureId}/statutory" }
+    - { method: GET, path: "/v1/team/time/payroll/analysis" }
+    - { method: GET, path: "/v1/team/time/payroll/export" }
+    - { method: GET, path: "/v1/workers/{id}/task-time" }
+    - { method: PATCH, path: "/v1/workers/{id}/time-entries/{entryId}/metadata" }
+    - { method: GET, path: "/v1/workers/{id}/offboarding" }
+    # Intake (the inbox tray), skill imports and suggestions. Console-driven
+    # workflows with no hand-written consumer yet.
+    - { method: POST, path: "/v1/intake/messages" }
+    - { method: GET, path: "/v1/intake/tray" }
+    - { method: POST, path: "/v1/intake/tray/{messageId}/resolve" }
+    - { method: GET, path: "/v1/skill-imports" }
+    - { method: POST, path: "/v1/skill-imports" }
+    - { method: GET, path: "/v1/skill-imports/{importId}/rows" }
+    - { method: POST, path: "/v1/skill-imports/{importId}/rows/{rowId}/confirm" }
+    - { method: GET, path: "/v1/suggestions" }
     - { method: POST, path: "/v1/team/time/close" }
     - { method: POST, path: "/v1/team/time/closures/{id}/reopen" }
     - { method: GET, path: "/v1/team/time/closures/covering" }

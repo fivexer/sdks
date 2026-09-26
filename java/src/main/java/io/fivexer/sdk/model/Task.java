@@ -32,6 +32,8 @@ public class Task {
     private EscalationPolicy escalation;
     private Integer escalationLevel;   // how far up the ladder this task has already climbed
     private SlaPolicy sla;
+    // The recorded accept, on an accepted task; null where the hold is not recorded
+    private Long acceptedAt;
     private SchedulePolicy schedule;
     private String workflowRunId;      // set on workflow-step tasks
     private String workflowStepId;
@@ -59,6 +61,16 @@ public class Task {
     public Integer getEscalationLevel() { return escalationLevel; }
 
     public SlaPolicy getSla() { return sla; }
+
+    /**
+     * When the worker holding this task accepted it (ms epoch).
+     *
+     * <p>Single-task reads only, and accepted tasks only: it is the recorded accept
+     * transition, so elapsed handling time may be counted from it. {@code null} means the
+     * hold is not recorded — a workspace with no control plane keeps no interval log — and
+     * must never be replaced with a substitute start time.
+     */
+    public Long getAcceptedAt() { return acceptedAt; }
     public SchedulePolicy getSchedule() { return schedule; }
     public String getWorkflowRunId() { return workflowRunId; }
     public String getWorkflowStepId() { return workflowStepId; }

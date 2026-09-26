@@ -35,6 +35,7 @@ def test_create_sends_every_policy_in_its_own_wire_object(server, client):
             escalation=EscalationPolicy(
                 respond_within_ms=60_000,
                 on_no_response="block",
+                offer_cooldown_ms=45_000,
                 priority_boost=10,
                 tiers=[["billing"], ["billing", "english"]],
                 max_escalations=2,
@@ -55,6 +56,7 @@ def test_create_sends_every_policy_in_its_own_wire_object(server, client):
     body = read_body(server.last)
     assert body["escalation"] == {
         "onNoResponse": "block",
+        "offerCooldownMs": 45_000,
         "priorityBoost": 10,
         "tiers": [["billing"], ["billing", "english"]],
         "maxEscalations": 2,
@@ -221,6 +223,27 @@ def test_recurrence_makes_a_template_and_keeps_every_ms_required(server, client)
         "catchUp": "all",
         "everyMs": 86_400_000,
     }
+
+
+def test_times_rides_along_as_occurrences_per_period(server, client):
+    server.set_response(json_response(202, {"id": "posts", "status": "recurring"}))
+
+    client.tasks.create(
+        CreateTask(
+            tags=["content"],
+            recurrence=RecurrencePolicy(every_ms=604_800_000, times=2),
+        )
+    )
+
+    # Two a week: the period goes on the wire as the caller wrote it, and the
+    # platform is the one that divides it into the gap.
+    assert read_body(server.last)["recurrence"] == {"everyMs": 604_800_000, "times": 2}
+
+
+def test_a_recurrence_read_back_keeps_its_times(server, client):
+    policy = RecurrencePolicy.from_json({"everyMs": 604_800_000, "times": 2})
+
+    assert policy.times == 2
 
 
 def test_a_minimal_recurrence_sends_only_the_interval(server, client):

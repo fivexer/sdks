@@ -35,6 +35,7 @@ final class TaskPoliciesTest extends ClientTestCase
                 ->escalation(
                     (new EscalationPolicy(60000))
                         ->onNoResponse('block')
+                        ->offerCooldownMs(45000)
                         ->priorityBoost(10)
                         ->tiers([['billing'], ['billing', 'english']])
                         ->maxEscalations(2)
@@ -55,6 +56,7 @@ final class TaskPoliciesTest extends ClientTestCase
         $body = $this->requestBodyJson($this->lastRequest());
         self::assertSame([
             'onNoResponse' => 'block',
+            'offerCooldownMs' => 45000,
             'priorityBoost' => 10.0,
             'tiers' => [['billing'], ['billing', 'english']],
             'maxEscalations' => 2,
@@ -210,6 +212,24 @@ final class TaskPoliciesTest extends ClientTestCase
             ['everyMs' => 60000],
             $this->requestBodyJson($this->lastRequest())['recurrence']
         );
+    }
+
+    public function testTimesRidesAlongAsOccurrencesPerPeriod(): void
+    {
+        $this->enqueueJson(202, '{"id":"posts","status":"recurring"}');
+
+        $this->client()->tasks()->create(
+            (new CreateTask(['content']))->recurrence((new RecurrencePolicy(604800000))->times(2))
+        );
+
+        // Two a week: the period goes on the wire as the caller wrote it, and
+        // the platform is the one that divides it into the gap.
+        self::assertSame(
+            ['times' => 2, 'everyMs' => 604800000],
+            $this->requestBodyJson($this->lastRequest())['recurrence']
+        );
+
+        self::assertSame(2, RecurrencePolicy::fromArray(['everyMs' => 604800000, 'times' => 2])->getTimes());
     }
 
     public function testATaskReadsBackItsPoliciesAndItsLadderPosition(): void

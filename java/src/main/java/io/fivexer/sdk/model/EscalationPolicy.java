@@ -21,6 +21,7 @@ public class EscalationPolicy {
 
     private Long respondWithinMs;
     private String onNoResponse;
+    private Long offerCooldownMs;
     private Double priorityBoost;
     private List<List<String>> tiers;
     private Integer maxEscalations;
@@ -36,6 +37,7 @@ public class EscalationPolicy {
 
     public Long getRespondWithinMs() { return respondWithinMs; }
     public String getOnNoResponse() { return onNoResponse; }
+    public Long getOfferCooldownMs() { return offerCooldownMs; }
     public Double getPriorityBoost() { return priorityBoost; }
     public List<List<String>> getTiers() { return tiers; }
     public Integer getMaxEscalations() { return maxEscalations; }
@@ -43,6 +45,14 @@ public class EscalationPolicy {
 
     /** {@code "block"} stops the non-responder winning it back; {@code "allow"} is the default. */
     public EscalationPolicy onNoResponse(String onNoResponse) { this.onNoResponse = onNoResponse; return this; }
+
+    /**
+     * Milliseconds the non-responder rests before this task can be offered to them again
+     * (1s–24h). The middle ground between letting them win it back on the next pass and barring
+     * them for good — which, when they are the only eligible worker, means nobody ever gets it.
+     * Ignored under {@code onNoResponse("block")}.
+     */
+    public EscalationPolicy offerCooldownMs(long offerCooldownMs) { this.offerCooldownMs = offerCooldownMs; return this; }
 
     /** Added to the task's priority on every escalation, so an aging task outranks fresh work. */
     public EscalationPolicy priorityBoost(double priorityBoost) { this.priorityBoost = priorityBoost; return this; }

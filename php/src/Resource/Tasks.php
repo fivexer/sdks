@@ -199,6 +199,17 @@ final class Tasks
         return TaskAction::fromArray($data);
     }
 
+    /** Report that accepted work could not be done. Only its holder may; counts as a failure. */
+    public function fail(string $taskId, string $workerId, ?string $reason = null): TaskAction
+    {
+        $body = ['workerId' => $workerId];
+        if ($reason !== null) {
+            $body['reason'] = $reason;
+        }
+        $data = $this->client->request('POST', '/tasks/' . \rawurlencode($taskId) . '/fail', $body) ?? [];
+        return TaskAction::fromArray($data);
+    }
+
     /** DRY helper: accept/reject share the exact same shape (workerId only). */
     private function workerAction(string $taskId, string $action, string $workerId): TaskAction
     {
