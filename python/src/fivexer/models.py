@@ -2567,9 +2567,7 @@ class WorkerMe:
             skill_setup_pending=bool(data.get("skillSetupPending", False)),
             locale=data.get("locale"),
             email_notices=bool(data.get("emailNotices", True)),
-            push_categories={
-                str(key): bool(value) for key, value in (data.get("pushCategories") or {}).items()
-            },
+            push_categories={str(key): bool(value) for key, value in (data.get("pushCategories") or {}).items()},
         )
 
 
