@@ -18,6 +18,7 @@ use Fivexer\SDK\Resource\NotificationSequences;
 use Fivexer\SDK\Resource\Runs;
 use Fivexer\SDK\Resource\Skills;
 use Fivexer\SDK\Resource\TaskAttachments;
+use Fivexer\SDK\Resource\TaskBooking;
 use Fivexer\SDK\Resource\TaskRecurring;
 use Fivexer\SDK\Resource\TaskComments;
 use Fivexer\SDK\Resource\TaskContexts;
@@ -47,6 +48,7 @@ final class ContractParityTest extends TestCase
         'tasks.comments' => TaskComments::class,
         'tasks.attachments' => TaskAttachments::class,
         'tasks.recurring' => TaskRecurring::class,
+        'tasks.booking' => TaskBooking::class,
         'tasks' => Tasks::class,
         'workers' => Workers::class,
         'skills' => Skills::class,
@@ -139,6 +141,7 @@ final class ContractParityTest extends TestCase
         self::assertInstanceOf(TaskContexts::class, $client->tasks()->context());
         self::assertInstanceOf(TaskComments::class, $client->tasks()->comments());
         self::assertInstanceOf(TaskAttachments::class, $client->tasks()->attachments());
+        self::assertInstanceOf(TaskBooking::class, $client->tasks()->booking());
         self::assertInstanceOf(Workers::class, $client->workers());
         self::assertInstanceOf(Skills::class, $client->skills());
         self::assertInstanceOf(Decisions::class, $client->decisions());

@@ -123,13 +123,14 @@ their own casing (`tasks().suggestWorkers(...)`, `$client->tasks()->suggestWorke
 
 | Group | Operations |
 |---|---|
-| `tasks` | `create` `create_many` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `set_priority` `suggest_workers` |
+| `tasks` | `create` `create_many` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `update` `set_priority` `history` `bookings` `suggest_workers` |
 | `tasks.context` | `get` `set` `clear` |
 | `tasks.comments` | `add` `list` `remove` |
 | `tasks.attachments` | `create` `confirm` `list` `download` `remove` `upload` |
 | `tasks.recurring` | `list` `remove` |
-| `workers` | `upsert` `list` `get` `patch` `set_availability` `queue` `metrics` `time_entries` `remove` |
-| `skills` | `create` `list` `get` `patch` `remove` `suggest` |
+| `tasks.booking` | `candidates` `set` `release` |
+| `workers` | `upsert` `list` `get` `patch` `set_availability` `queue` `metrics` `time_entries` `create_time_entry` `correct_time_entry` `time_corrections` `offboarding` `links` `link` `unlink` `remove` |
+| `skills` | `create` `list` `get` `patch` `remove` `suggest` `expiring` |
 | `teams` | `create` `list` `get` `patch` `remove` `members` `set_members` |
 | `join_links` | `create` `list` `revoke` |
 | `identities` | `list` `invite` `resend_invite` `create` `update` `remove` |
@@ -140,7 +141,7 @@ their own casing (`tasks().suggestWorkers(...)`, `$client->tasks()->suggestWorke
 | `notifications.sequences` | `list` `create` `get` `update` `remove` |
 | `notifications.channels` | `list` `create` `get` `update` `remove` |
 | `stats` / `history` | `stats` `sla_stats` `queue_audit` `portal` `history.timeseries` `history.workers` `history.worker_timeseries` |
-| `team` / `breaks` | `team.presence` `breaks.metrics` |
+| `team` / `breaks` | `team.presence` `team.time` `breaks.metrics` |
 | **worker portal** | `login` `logout` `refresh` `join` `accept_invite` `me` `set_availability` `change_pin` `skill_catalog` `set_skills` `queue` `task_detail` `accept` `reject` `complete` `comments` `add_comment` `start_break` `end_break` `breaks_today` `metrics_today` `metrics_window` `time_entries` `team_presence` `update_location` `register_device` `unregister_device` `push_config` `push_subscribe` `push_unsubscribe` `attachments.create` `attachments.confirm` `attachments.list` `attachments.download` `attachments.upload` `voice_ice`¹ |
 
 `history`, `team` and `breaks` need the control plane; a data-plane-only deployment answers

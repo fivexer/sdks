@@ -27,6 +27,8 @@ final class WorkerMetricsToday
         public readonly int $onShiftMs = 0,
         /** Additive — 0 on servers predating the shift log. */
         public readonly int $shiftCount = 0,
+        /** Start of the currently open shift (ISO-8601); null while off shift */
+        public readonly ?string $currentShiftStartedAt = null,
     ) {
     }
 
@@ -46,6 +48,9 @@ final class WorkerMetricsToday
             workingMs: (int) ($data['workingMs'] ?? 0),
             onShiftMs: (int) ($data['onShiftMs'] ?? 0),
             shiftCount: (int) ($data['shiftCount'] ?? 0),
+            currentShiftStartedAt: isset($data['currentShiftStartedAt'])
+                ? (string) $data['currentShiftStartedAt']
+                : null,
         );
     }
 }

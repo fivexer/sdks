@@ -49,6 +49,10 @@ final class WorkerTimeEntry
         public readonly ?string $endReason = null,
         /** Breaks only: the worker's stated reason. */
         public readonly ?string $reason = null,
+        /** A note describing the work this entry represents */
+        public readonly ?string $description = null,
+        /** The task this time was spent on */
+        public readonly ?string $taskId = null,
     ) {
     }
 
@@ -72,6 +76,8 @@ final class WorkerTimeEntry
             source: isset($data['source']) ? (string) $data['source'] : null,
             endReason: isset($data['endReason']) ? (string) $data['endReason'] : null,
             reason: isset($data['reason']) ? (string) $data['reason'] : null,
+            description: isset($data['description']) ? (string) $data['description'] : null,
+            taskId: isset($data['taskId']) ? (string) $data['taskId'] : null,
         );
     }
 }

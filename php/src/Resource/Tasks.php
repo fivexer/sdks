@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace Fivexer\SDK\Resource;
 
 use Fivexer\SDK\Fivexer;
+use Fivexer\SDK\Internal\Json;
 use Fivexer\SDK\Model\AssignTaskResult;
 use Fivexer\SDK\Model\BulkTaskReport;
 use Fivexer\SDK\Model\CreateTask;
+use Fivexer\SDK\Model\SlotBooking;
 use Fivexer\SDK\Model\TaskCheckReport;
 use Fivexer\SDK\Model\TaskEscalation;
+use Fivexer\SDK\Model\TaskHistoryPage;
+use Fivexer\SDK\Model\TaskHistoryQuery;
 use Fivexer\SDK\Model\TaskList;
 use Fivexer\SDK\Model\UnparkTask;
 use Fivexer\SDK\Model\SuggestWorkers;
@@ -18,6 +22,8 @@ use Fivexer\SDK\Model\Task;
 use Fivexer\SDK\Model\TaskAction;
 use Fivexer\SDK\Model\TaskPage;
 use Fivexer\SDK\Model\TaskPriority;
+use Fivexer\SDK\Model\UpdateTaskInput;
+use Fivexer\SDK\Model\UpdateTaskResult;
 
 /**
  * Task lifecycle resource. Delegates to Fivexer::request() so all transport logic
@@ -33,6 +39,7 @@ final class Tasks
     private readonly TaskComments $commentsResource;
     private readonly TaskAttachments $attachmentsResource;
     private readonly TaskRecurring $recurringResource;
+    private readonly TaskBooking $bookingResource;
 
     public function __construct(private readonly Fivexer $client)
     {
@@ -40,6 +47,7 @@ final class Tasks
         $this->commentsResource = new TaskComments($client);
         $this->attachmentsResource = new TaskAttachments($client);
         $this->recurringResource = new TaskRecurring($client);
+        $this->bookingResource = new TaskBooking($client);
     }
 
     /** The rich data stored against a task: title, description, context and references. */
@@ -64,6 +72,12 @@ final class Tasks
     public function recurring(): TaskRecurring
     {
         return $this->recurringResource;
+    }
+
+    /** The booking on a slotted task — who is reserved for its appointment. */
+    public function booking(): TaskBooking
+    {
+        return $this->bookingResource;
     }
 
     /** Create a task; the server queues it for matching. */
@@ -91,6 +105,39 @@ final class Tasks
             self::PARAM_LIMIT => $limit,
         ]) ?? [];
         return TaskPage::fromArray($data);
+    }
+
+    /**
+     * Finished tasks, newest first — the archive, not the live stores. Several statuses may be
+     * asked for at once; they travel as one comma-joined parameter. Page with the result's
+     * nextCursor. Requires the control plane.
+     */
+    public function history(?TaskHistoryQuery $query = null): TaskHistoryPage
+    {
+        return TaskHistoryPage::fromArray(
+            $this->client->request('GET', '/tasks/history', null, ($query ?? new TaskHistoryQuery())->toQuery()) ?? []
+        );
+    }
+
+    /**
+     * Booked appointments overlapping a window — the planner's calendar. Bookings are
+     * reservations of a worker's time, not tasks in a state, which is why no task listing
+     * answers "who is on what, when".
+     *
+     * @param int $from Epoch ms, start of the window
+     * @param int $to Epoch ms, end of the window
+     * @param string|null $workerId One worker's calendar, or null for everyone's
+     * @return list<SlotBooking>
+     */
+    public function bookings(int $from, int $to, ?string $workerId = null): array
+    {
+        $data = $this->client->request('GET', '/tasks/bookings', null, [
+            'from' => $from,
+            'to' => $to,
+            'workerId' => $workerId,
+        ]) ?? [];
+        /** @var list<SlotBooking> */
+        return Json::parseEach($data, 'bookings', [SlotBooking::class, 'fromArray']);
     }
 
     /** Cancel a queued task. */
@@ -240,6 +287,24 @@ final class Tasks
         );
     }
 
+    /**
+     * Edit a live task — routing tags, priority, title, description, context, references, meta.
+     * Omitted fields are left alone; the input's clear…() methods send null for the clearable
+     * ones.
+     *
+     * Changing the tags changes who is eligible. If they no longer reach the worker holding the
+     * task it is taken off them and returned to the queue — check `requeued` on the result, or
+     * a retag that moved work will look like a no-op. An edit that leaves the tags alone never
+     * moves anything.
+     */
+    public function update(string $taskId, UpdateTaskInput $input): UpdateTaskResult
+    {
+        return UpdateTaskResult::fromArray(
+            $this->client->request('PATCH', '/tasks/' . \rawurlencode($taskId), $input->toArray()) ?? []
+        );
+    }
+
+    /** Shorthand for an update that only changes the priority. */
     public function setPriority(string $taskId, float $priority): TaskPriority
     {
         return TaskPriority::fromArray(

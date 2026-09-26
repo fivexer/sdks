@@ -47,12 +47,13 @@ $stats = $client->stats();
 
 | Accessor | Operations |
 |---|---|
-| `$client->tasks()` | `create` `createMany` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `setPriority` `suggestWorkers` |
+| `$client->tasks()` | `create` `createMany` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `update` `setPriority` `history` `bookings` `suggestWorkers` |
+| `$client->tasks()->booking()` | `candidates` `set` `release` |
 | `$client->tasks()->context()` | `get` `set` `clear` |
 | `$client->tasks()->comments()` | `add` `list` `remove` |
 | `$client->tasks()->attachments()` | `create` `confirm` `list` `download` `remove` `upload` |
-| `$client->workers()` | `upsert` `list` `get` `patch` `setAvailability` `queue` `metrics` `timeEntries` `remove` |
-| `$client->skills()` | `create` `list` `get` `patch` `remove` `suggest` |
+| `$client->workers()` | `upsert` `list` `get` `patch` `setAvailability` `queue` `metrics` `timeEntries` `createTimeEntry` `correctTimeEntry` `timeCorrections` `offboarding` `links` `link` `unlink` `remove` |
+| `$client->skills()` | `create` `list` `get` `patch` `remove` `suggest` `expiring` |
 | `$client->teams()` | `create` `list` `get` `patch` `remove` `members` `setMembers` |
 | `$client->joinLinks()` | `create` `list` `revoke` |
 | `$client->identities()` | `list` `invite` `resendInvite` `create` `update` `remove` |
@@ -63,7 +64,7 @@ $stats = $client->stats();
 | `$client->notifications()->sequences()` | `list` `create` `get` `update` `remove` |
 | `$client->notifications()->channels()` | `list` `create` `get` `update` `remove` |
 | `$client->stats()` / `$client->history()` | `stats()` `slaStats()` `queueAudit()` `portal()` `timeseries` `workers` `workerTimeseries` |
-| `$client->team()` / `$client->breaks()` | `presence` `metrics` |
+| `$client->team()` / `$client->breaks()` | `presence` `time` `metrics` |
 
 `history()`, `team()` and `breaks()` need the control plane; a data-plane-only deployment throws
 `FivexerApiException` with `apiCode` `history_unavailable`.

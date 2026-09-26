@@ -103,20 +103,6 @@ AS_ARGUMENTS = {
 #: CONSOLE_PLANE_ONLY — these responses really are sent to a workspace key, and filing them
 #: there would record a false reason for the omission.
 PLANNED = {
-    # Connector links ("this worker is that person in HubSpot / Jira / …"). Bound in the
-    # reference TS SDK (`workers.links` / `link` / `unlink`); listed under `planned:` in
-    # contract/operations.yaml with the three endpoints.
-    "WorkerLink": "GET/PUT /v1/workers/links… — one worker ↔ connector-user link",
-    "LinkWorkerInput": "PUT /v1/workers/{id}/links/{connector} — the link body",
-    # Timeslots and advance booking, the finished-task history and the offboarding preview.
-    # Planned with their endpoints in contract/operations.yaml.
-    "TimeSlot": "nested in CreateTask/Task — a task's bookable slot",
-    "SlotBooking": "GET /v1/tasks/bookings, POST /v1/tasks/{id}/booking — one booked slot",
-    "SlotCandidate": "GET /v1/tasks/{id}/booking/candidates — who could take the slot",
-    "ArchivedTask": "GET /v1/tasks/history — one finished task",
-    "TaskHistoryPage": "GET /v1/tasks/history — a page of finished tasks",
-    "TaskHistoryQuery": "the filter on GET /v1/tasks/history",
-    "WorkerOffboardingSummary": "GET /v1/workers/{id}/offboarding — what removing a worker hands back",
     # Payroll analysis and statutory figures. The wage-figure caution on the rest of the
     # payroll surface applies: bound in three SDKs once the shapes stop moving.
     "PayrollAnalysis": "GET /v1/team/time/payroll/analysis — the ledger grouped",
@@ -126,31 +112,10 @@ PLANNED = {
     "PeriodStatutorySummary": "nested in a closure — how many figures were computed or blocked",
     "StatutoryLedgerEntry": "nested in WorkerStatutoryNet — one step of the gross-to-net",
     "WorkerStatutoryNet": "nested in PeriodStatutoryRecord — one person's gross-to-net",
-    # Skill expiry. The endpoint is bound in the reference TS SDK (`workers.expiringSkills`)
-    # and read by the console; the three hand-written SDKs have not modelled the row yet.
-    # Tracked as debt alongside GET /v1/skills/expiring in contract/operations.yaml.
-    "ExpiringWorkerSkill": "GET /v1/skills/expiring — one qualification that has lapsed, or is about to",
-    # Editing a live task. `PATCH /v1/tasks/{id}` widened from a priority-only bump
-    # to a real update (routing tags, title, description, context, references,
-    # meta), and the three hand-written SDKs still bind only the old
-    # `setPriority` shape. The body is the part worth modelling deliberately: a
-    # retag can requeue work off a worker, so an SDK that models it must also
-    # surface `requeued` or it will look like a silent no-op.
-    "UpdateTaskInput": "PATCH /v1/tasks/{id} — the fields of a live task an operator may change",
-    "UpdateTaskResult": "the task after the edit, plus whether a retag sent it back to the queue",
-    "TeamTimeResult": "GET /v1/team/time — reachable from the TS SDK (`fivexer.team.time`) only",
-    "TeamTimeWorker": "nested in TeamTimeResult — per-worker shift, break and outcome totals",
-    "TeamTimeDay": "nested in TeamTimeResult — the per-day series the console charts",
-    "TeamTimeQuery": "the echoed query on TeamTimeResult",
-    # Payroll-grade working time: correcting a record, and closing the range of
-    # days that makes it final. Workspace-plane wire, TS-only bindings so far —
-    # the console drives the whole surface and a wage figure is the last shape
-    # to commit three hand-written SDKs to while it is still moving.
-    "CorrectTimeEntryInput": "PATCH /v1/workers/{id}/time-entries/{entryId} — the correction body",
-    "CreateTimeEntryInput": "POST /v1/workers/{id}/time-entries — a shift worked but never logged",
-    "CorrectedTimeEntry": "nested in TimeEntryCorrectionResult — the entry as it stands after the change",
-    "TimeEntryCorrectionResult": "the corrected entry beside the correction that produced it",
-    "TimeCorrection": "GET /v1/workers/{id}/time-corrections — the trail a dispute reads",
+    # Payroll: closing the range of days that makes the record final, and the
+    # priced figures. Correcting a record is bound in all four SDKs; these wait —
+    # a wage figure is the last shape to commit three hand-written SDKs to while
+    # it is still moving.
     "TimePeriodClosure": "POST /v1/team/time/close — a range of days signed off for pay",
     "ClosePeriodInput": "the body that signs a period off",
     "ListClosuresQuery": "the filter on GET /v1/team/time/closures",

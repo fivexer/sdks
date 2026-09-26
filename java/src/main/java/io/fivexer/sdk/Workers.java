@@ -1,7 +1,17 @@
 package io.fivexer.sdk;
 
 import io.fivexer.sdk.internal.Json;
+import io.fivexer.sdk.model.CorrectTimeEntryInput;
+import io.fivexer.sdk.model.CreateTimeEntryInput;
+import io.fivexer.sdk.model.LinkWorkerInput;
 import io.fivexer.sdk.model.PatchWorker;
+import io.fivexer.sdk.model.TimeCorrectionList;
+import io.fivexer.sdk.model.TimeEntryCorrectionResult;
+import io.fivexer.sdk.model.WorkerLink;
+import io.fivexer.sdk.model.WorkerLinkList;
+import io.fivexer.sdk.model.WorkerOffboardingSummary;
+import java.util.Collections;
+import java.util.List;
 import io.fivexer.sdk.model.UpsertWorker;
 import io.fivexer.sdk.model.WorkerAvailability;
 import io.fivexer.sdk.model.WorkerDetail;
@@ -102,6 +112,79 @@ public final class Workers {
     public WorkerTimeEntriesResult timeEntries(String workerId, String from, String to) {
         return client.request("GET", "/workers/" + Json.enc(workerId) + "/time-entries", null,
                 Json.query("from", from, "to", to), WorkerTimeEntriesResult.class, false);
+    }
+
+    /**
+     * Record a shift that was worked and never logged. Both ends and a reason are required; a
+     * signed-off period refuses it.
+     */
+    public TimeEntryCorrectionResult createTimeEntry(String workerId, CreateTimeEntryInput input) {
+        return client.request("POST", "/workers/" + Json.enc(workerId) + "/time-entries", input.toJson(),
+                null, TimeEntryCorrectionResult.class, false);
+    }
+
+    /**
+     * Change one recorded shift or break, keeping what it said before. The reason is mandatory
+     * and a signed-off period refuses the change — a correction, not an edit.
+     *
+     * @param entryId the row's id, from {@link io.fivexer.sdk.model.WorkerTimeEntry#getId()}
+     */
+    public TimeEntryCorrectionResult correctTimeEntry(String workerId, String entryId,
+            CorrectTimeEntryInput input) {
+        return client.request("PATCH",
+                "/workers/" + Json.enc(workerId) + "/time-entries/" + Json.enc(entryId), input.toJson(),
+                null, TimeEntryCorrectionResult.class, false);
+    }
+
+    /** Every change made to this person's records — the trail a dispute reads. */
+    public TimeCorrectionList timeCorrections(String workerId) {
+        return client.request("GET", "/workers/" + Json.enc(workerId) + "/time-corrections", null, null,
+                TimeCorrectionList.class, false);
+    }
+
+    /** What removing this worker today would hand back and free. */
+    public WorkerOffboardingSummary offboarding(String workerId) {
+        return offboarding(workerId, null);
+    }
+
+    /**
+     * What removing this worker would do: tasks handed back to the queue, roster shifts after
+     * {@code lastDay} freed, open cover, swaps and leave requests closed. Read-only — show it
+     * before {@link #remove}.
+     *
+     * @param lastDay their last working day ({@code YYYY-MM-DD}), or null for today
+     */
+    public WorkerOffboardingSummary offboarding(String workerId, String lastDay) {
+        return client.request("GET", "/workers/" + Json.enc(workerId) + "/offboarding", null,
+                Json.query("lastDay", lastDay), WorkerOffboardingSummary.class, false);
+    }
+
+    /** Every link between a worker and the person they are in a connected system. */
+    public List<WorkerLink> links() {
+        return links(null);
+    }
+
+    /** @param connector one connector's links only ({@code hubspot}, {@code jira}, …), or null */
+    public List<WorkerLink> links(String connector) {
+        WorkerLinkList envelope = client.request("GET", "/workers/links", null,
+                Json.query("connector", connector), WorkerLinkList.class, false);
+        return envelope.getLinks() == null ? Collections.emptyList() : envelope.getLinks();
+    }
+
+    /**
+     * Say this worker is {@code vendorUserId} in {@code connector}, so the connector writes back
+     * under them instead of needing a second, imported worker. Idempotent for the same pair; a
+     * 409 {@code worker_link_conflict} when either side is linked to somebody else.
+     */
+    public WorkerLink link(String workerId, String connector, LinkWorkerInput input) {
+        return client.request("PUT", "/workers/" + Json.enc(workerId) + "/links/" + Json.enc(connector),
+                input.toJson(), null, WorkerLink.class, false);
+    }
+
+    /** Remove a link. A 404 when there was none. */
+    public void unlink(String workerId, String connector) {
+        client.request("DELETE", "/workers/" + Json.enc(workerId) + "/links/" + Json.enc(connector), null,
+                null, Void.class, true);
     }
 
     public void remove(String workerId) {

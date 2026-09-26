@@ -34,6 +34,7 @@ from .models import (
     BulkTaskReport,
     Comment,
     CommentPage,
+    CorrectTimeEntryInput,
     CreateAttachment,
     CreatedAttachment,
     CreateJoinLink,
@@ -41,14 +42,17 @@ from .models import (
     CreateNotificationChannel,
     CreateNotificationSequence,
     CreateTask,
+    CreateTimeEntryInput,
     CreateWorkerIdentity,
     Decision,
+    ExpiringSkills,
     InviteWorkerIdentity,
     JoinLink,
     LearnedWeightsPreview,
     LearningFeedbackItem,
     LearningFeedbackResult,
     LearningStatus,
+    LinkWorkerInput,
     ListDecisionsQuery,
     ListRunsQuery,
     ListTasksQuery,
@@ -66,6 +70,8 @@ from .models import (
     SetTaskContext,
     Skill,
     SlaStats,
+    SlotBooking,
+    SlotCandidate,
     StartRun,
     StatsTimeseriesResult,
     StatsWindowQuery,
@@ -76,6 +82,8 @@ from .models import (
     TaskCheckReport,
     TaskContext,
     TaskEscalation,
+    TaskHistoryPage,
+    TaskHistoryQuery,
     TaskList,
     TaskPage,
     TaskPriority,
@@ -83,9 +91,14 @@ from .models import (
     TeamMembers,
     TeamPresence,
     TeamRoster,
+    TeamTimeQuery,
+    TeamTimeResult,
+    TimeEntryCorrectionResult,
     UnparkTask,
     UpdateNotificationChannel,
     UpdateNotificationSequence,
+    UpdateTaskInput,
+    UpdateTaskResult,
     UpdateWorkerIdentity,
     UpsertSkill,
     UpsertTeam,
@@ -95,12 +108,15 @@ from .models import (
     WorkerIdentityResult,
     WorkerInviteResult,
     WorkerLearningStats,
+    WorkerLink,
     WorkerList,
     WorkerMetrics,
+    WorkerOffboardingSummary,
     WorkerPortalLink,
     WorkerQueue,
     WorkerStatsQuery,
     WorkerStatsResult,
+    WorkerTimeCorrections,
     WorkerTimeEntriesResult,
     WorkerTimeseriesResult,
     WorkflowDefinition,
@@ -462,6 +478,7 @@ class _Tasks:
         self.comments = _TaskComments(client)
         self.attachments = _TaskAttachments(client)
         self.recurring = _TaskRecurring(client)
+        self.booking = _TaskBooking(client)
 
     def create_many(self, tasks: builtins.list[CreateTask]) -> BulkTaskReport:
         """Create many tasks in one call. Partial success is normal: read ``failed`` and the
@@ -530,6 +547,29 @@ class _Tasks:
     def set_priority(self, task_id: str, priority: float) -> TaskPriority:
         return TaskPriority.from_json(self._c._send(specs.tasks_set_priority(task_id, priority)))
 
+    def update(self, task_id: str, update: UpdateTaskInput) -> UpdateTaskResult:
+        """Edit a live task — tags, priority, title, description, context, references, meta.
+
+        Patch semantics: ``None`` fields are left alone, :data:`CLEAR` clears the clearable ones.
+        Changing ``tags`` changes who is eligible: if the new tags no longer reach the worker
+        holding the task it is taken back and requeued, and ``requeued`` says so. An edit that
+        leaves the tags alone never moves anything.
+        """
+        return UpdateTaskResult.from_json(self._c._send(specs.tasks_update(task_id, update)))
+
+    def history(self, query: TaskHistoryQuery | None = None) -> TaskHistoryPage:
+        """Finished tasks, newest first — the archive, not the live stores. Page with
+        ``next_cursor``. Requires the control plane."""
+        return TaskHistoryPage.from_json(self._c._send(specs.tasks_history(query)))
+
+    def bookings(self, from_: int, to: int, worker_id: str | None = None) -> builtins.list[SlotBooking]:
+        """Booked appointments overlapping a window (epoch ms) — the planner's calendar.
+
+        Bookings are reservations of a worker's time, not tasks in a state, which is why no task
+        listing answers "who is on what, when".
+        """
+        return _each(self._c._send(specs.tasks_bookings(from_, to, worker_id)), "bookings", SlotBooking.from_json)
+
     def suggest_workers(self, request: SuggestWorkers) -> SuggestWorkersResult:
         """Dry run: who *would* match these tags, without creating a task."""
         return SuggestWorkersResult.from_json(self._c._send(specs.tasks_suggest_workers(request)))
@@ -585,6 +625,25 @@ class _TaskRecurring:
         idempotent here, and a caller that treats it as such will mask a wrong id.
         """
         self._c._send(specs.tasks_recurring_remove(template_id, drop_scheduled or None))
+
+
+class _TaskBooking:
+    """Advance booking for slotted tasks: reserving a worker's time ahead of the appointment."""
+
+    def __init__(self, client: Fivexer) -> None:
+        self._c = client
+
+    def candidates(self, task_id: str) -> builtins.list[SlotCandidate]:
+        """Who could take the slot, ranked, with what blocks the others."""
+        return _each(self._c._send(specs.tasks_booking_candidates(task_id)), "candidates", SlotCandidate.from_json)
+
+    def set(self, task_id: str, worker_id: str, force: bool = False) -> SlotBooking:
+        """Book the slot for a worker. 409 on a clash unless ``force``."""
+        return SlotBooking.from_json(self._c._send(specs.tasks_booking_set(task_id, worker_id, force))["booking"])
+
+    def release(self, task_id: str) -> None:
+        """The slot goes back to being unbooked."""
+        self._c._send(specs.tasks_booking_release(task_id))
 
 
 class _TaskAttachments:
@@ -679,6 +738,46 @@ class _Workers:
     def time_entries(self, worker_id: str, from_: str | None = None, to: str | None = None) -> WorkerTimeEntriesResult:
         """The recorded shift and break log for a window (default: the last 7 days)."""
         return WorkerTimeEntriesResult.from_json(self._c._send(specs.workers_time_entries(worker_id, from_, to)))
+
+    def create_time_entry(self, worker_id: str, entry: CreateTimeEntryInput) -> TimeEntryCorrectionResult:
+        """Record a shift that was worked and never logged. Both ends and a reason are required;
+        a closed period refuses it."""
+        return TimeEntryCorrectionResult.from_json(self._c._send(specs.workers_create_time_entry(worker_id, entry)))
+
+    def correct_time_entry(
+        self, worker_id: str, entry_id: str, correction: CorrectTimeEntryInput
+    ) -> TimeEntryCorrectionResult:
+        """Change one recorded shift or break, keeping what it said before.
+
+        The reason is mandatory and a signed-off period refuses the change outright — that is
+        what keeps this a correction, not an edit.
+        """
+        return TimeEntryCorrectionResult.from_json(
+            self._c._send(specs.workers_correct_time_entry(worker_id, entry_id, correction))
+        )
+
+    def time_corrections(self, worker_id: str) -> WorkerTimeCorrections:
+        """Every change made to this person's records — the trail a dispute reads."""
+        return WorkerTimeCorrections.from_json(self._c._send(specs.workers_time_corrections(worker_id)))
+
+    def offboarding(self, worker_id: str, last_day: str | None = None) -> WorkerOffboardingSummary:
+        """What removing this worker would hand back and free. Read-only — show it before
+        :meth:`remove`."""
+        return WorkerOffboardingSummary.from_json(self._c._send(specs.workers_offboarding(worker_id, last_day)))
+
+    def links(self, connector: str | None = None) -> builtins.list[WorkerLink]:
+        """Links between workers and the people they are in connected systems."""
+        return _each(self._c._send(specs.workers_links(connector)), "links", WorkerLink.from_json)
+
+    def link(self, worker_id: str, connector: str, link: LinkWorkerInput) -> WorkerLink:
+        """Say this worker is ``vendor_user_id`` in ``connector``, so the connector writes back
+        under them. Idempotent for the same pair; 409 ``worker_link_conflict`` when either side is
+        already linked to somebody else."""
+        return WorkerLink.from_json(self._c._send(specs.workers_link(worker_id, connector, link)))
+
+    def unlink(self, worker_id: str, connector: str) -> None:
+        """404 when there was no link."""
+        self._c._send(specs.workers_unlink(worker_id, connector))
 
     def remove(self, worker_id: str) -> None:
         self._c._send(specs.workers_remove(worker_id))
@@ -782,6 +881,11 @@ class _Skills:
     def suggest(self, selected: builtins.list[str] | None = None, limit: int | None = None) -> builtins.list[Skill]:
         """Skills commonly held alongside the ones already selected."""
         return _each(self._c._send(specs.skills_suggest(selected, limit)), "skills", Skill.from_json)
+
+    def expiring(self, within_days: int | None = None, as_of: str | None = None) -> ExpiringSkills:
+        """Qualifications that have lapsed, or lapse within ``within_days`` (default 30).
+        Already-expired rows come first. Requires the control plane."""
+        return ExpiringSkills.from_json(self._c._send(specs.skills_expiring(within_days, as_of)))
 
 
 class _Decisions:
@@ -983,6 +1087,11 @@ class _Team:
         """Who is working vs on break vs paused. Requires the control plane."""
         return TeamPresence.from_json(self._c._send(specs.team_presence(team_id)))
 
+    def time(self, query: TeamTimeQuery | None = None) -> TeamTimeResult:
+        """Worked time, breaks and outcomes per worker and per day for a window — the
+        working-time report. Days are UTC. Requires the control plane."""
+        return TeamTimeResult.from_json(self._c._send(specs.team_time(query)))
+
 
 class _Breaks:
     def __init__(self, client: Fivexer) -> None:
@@ -1011,6 +1120,7 @@ class _AsyncTasks:
         self.comments = _AsyncTaskComments(client)
         self.attachments = _AsyncTaskAttachments(client)
         self.recurring = _AsyncTaskRecurring(client)
+        self.booking = _AsyncTaskBooking(client)
 
     async def create_many(self, tasks: builtins.list[CreateTask]) -> BulkTaskReport:
         return BulkTaskReport.from_json(await self._c._send(specs.tasks_create_many(tasks)))
@@ -1063,6 +1173,16 @@ class _AsyncTasks:
     async def set_priority(self, task_id: str, priority: float) -> TaskPriority:
         return TaskPriority.from_json(await self._c._send(specs.tasks_set_priority(task_id, priority)))
 
+    async def update(self, task_id: str, update: UpdateTaskInput) -> UpdateTaskResult:
+        return UpdateTaskResult.from_json(await self._c._send(specs.tasks_update(task_id, update)))
+
+    async def history(self, query: TaskHistoryQuery | None = None) -> TaskHistoryPage:
+        return TaskHistoryPage.from_json(await self._c._send(specs.tasks_history(query)))
+
+    async def bookings(self, from_: int, to: int, worker_id: str | None = None) -> builtins.list[SlotBooking]:
+        result = await self._c._send(specs.tasks_bookings(from_, to, worker_id))
+        return _each(result, "bookings", SlotBooking.from_json)
+
     async def suggest_workers(self, request: SuggestWorkers) -> SuggestWorkersResult:
         return SuggestWorkersResult.from_json(await self._c._send(specs.tasks_suggest_workers(request)))
 
@@ -1108,6 +1228,24 @@ class _AsyncTaskRecurring:
 
     async def remove(self, template_id: str, drop_scheduled: bool = False) -> None:
         await self._c._send(specs.tasks_recurring_remove(template_id, drop_scheduled or None))
+
+
+class _AsyncTaskBooking:
+    """Async twin of :class:`_TaskBooking`."""
+
+    def __init__(self, client: AsyncFivexer) -> None:
+        self._c = client
+
+    async def candidates(self, task_id: str) -> builtins.list[SlotCandidate]:
+        result = await self._c._send(specs.tasks_booking_candidates(task_id))
+        return _each(result, "candidates", SlotCandidate.from_json)
+
+    async def set(self, task_id: str, worker_id: str, force: bool = False) -> SlotBooking:
+        result = await self._c._send(specs.tasks_booking_set(task_id, worker_id, force))
+        return SlotBooking.from_json(result["booking"])
+
+    async def release(self, task_id: str) -> None:
+        await self._c._send(specs.tasks_booking_release(task_id))
 
 
 class _AsyncTaskAttachments:
@@ -1187,6 +1325,32 @@ class _AsyncWorkers:
         self, worker_id: str, from_: str | None = None, to: str | None = None
     ) -> WorkerTimeEntriesResult:
         return WorkerTimeEntriesResult.from_json(await self._c._send(specs.workers_time_entries(worker_id, from_, to)))
+
+    async def create_time_entry(self, worker_id: str, entry: CreateTimeEntryInput) -> TimeEntryCorrectionResult:
+        result = await self._c._send(specs.workers_create_time_entry(worker_id, entry))
+        return TimeEntryCorrectionResult.from_json(result)
+
+    async def correct_time_entry(
+        self, worker_id: str, entry_id: str, correction: CorrectTimeEntryInput
+    ) -> TimeEntryCorrectionResult:
+        result = await self._c._send(specs.workers_correct_time_entry(worker_id, entry_id, correction))
+        return TimeEntryCorrectionResult.from_json(result)
+
+    async def time_corrections(self, worker_id: str) -> WorkerTimeCorrections:
+        return WorkerTimeCorrections.from_json(await self._c._send(specs.workers_time_corrections(worker_id)))
+
+    async def offboarding(self, worker_id: str, last_day: str | None = None) -> WorkerOffboardingSummary:
+        result = await self._c._send(specs.workers_offboarding(worker_id, last_day))
+        return WorkerOffboardingSummary.from_json(result)
+
+    async def links(self, connector: str | None = None) -> builtins.list[WorkerLink]:
+        return _each(await self._c._send(specs.workers_links(connector)), "links", WorkerLink.from_json)
+
+    async def link(self, worker_id: str, connector: str, link: LinkWorkerInput) -> WorkerLink:
+        return WorkerLink.from_json(await self._c._send(specs.workers_link(worker_id, connector, link)))
+
+    async def unlink(self, worker_id: str, connector: str) -> None:
+        await self._c._send(specs.workers_unlink(worker_id, connector))
 
     async def remove(self, worker_id: str) -> None:
         await self._c._send(specs.workers_remove(worker_id))
@@ -1280,6 +1444,9 @@ class _AsyncSkills:
         self, selected: builtins.list[str] | None = None, limit: int | None = None
     ) -> builtins.list[Skill]:
         return _each(await self._c._send(specs.skills_suggest(selected, limit)), "skills", Skill.from_json)
+
+    async def expiring(self, within_days: int | None = None, as_of: str | None = None) -> ExpiringSkills:
+        return ExpiringSkills.from_json(await self._c._send(specs.skills_expiring(within_days, as_of)))
 
 
 class _AsyncDecisions:
@@ -1458,6 +1625,9 @@ class _AsyncTeam:
 
     async def presence(self, team_id: str | None = None) -> TeamPresence:
         return TeamPresence.from_json(await self._c._send(specs.team_presence(team_id)))
+
+    async def time(self, query: TeamTimeQuery | None = None) -> TeamTimeResult:
+        return TeamTimeResult.from_json(await self._c._send(specs.team_time(query)))
 
 
 class _AsyncBreaks:

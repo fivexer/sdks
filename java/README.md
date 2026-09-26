@@ -60,12 +60,13 @@ WorkspaceStats stats = client.stats();
 
 | Accessor | Operations |
 |---|---|
-| `client.tasks()` | `create` `createMany` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `setPriority` `suggestWorkers` |
+| `client.tasks()` | `create` `createMany` `check` `get` `list` `history` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `bookings` `unpark` `update` `setPriority` `suggestWorkers` |
+| `client.tasks().booking()` | `candidates` `set` `release` |
 | `client.tasks().context()` | `get` `set` `clear` |
 | `client.tasks().comments()` | `add` `list` `remove` |
 | `client.tasks().attachments()` | `create` `confirm` `list` `download` `remove` `upload` |
-| `client.workers()` | `upsert` `list` `get` `patch` `setAvailability` `queue` `metrics` `timeEntries` `remove` |
-| `client.skills()` | `create` `list` `get` `patch` `remove` `suggest` |
+| `client.workers()` | `upsert` `list` `get` `patch` `setAvailability` `queue` `metrics` `timeEntries` `createTimeEntry` `correctTimeEntry` `timeCorrections` `offboarding` `links` `link` `unlink` `remove` |
+| `client.skills()` | `create` `list` `get` `patch` `remove` `suggest` `expiring` |
 | `client.teams()` | `create` `list` `get` `patch` `remove` `members` `setMembers` |
 | `client.joinLinks()` | `create` `list` `revoke` |
 | `client.identities()` | `list` `invite` `resendInvite` `create` `update` `remove` |
@@ -76,7 +77,7 @@ WorkspaceStats stats = client.stats();
 | `client.notifications().sequences()` | `list` `create` `get` `update` `remove` |
 | `client.notifications().channels()` | `list` `create` `get` `update` `remove` |
 | `client.stats()` / `client.history()` | `stats()` `slaStats()` `queueAudit()` `portal()` `timeseries` `workers` `workerTimeseries` |
-| `client.team()` / `client.breaks()` | `presence` `metrics` |
+| `client.team()` / `client.breaks()` | `presence` `time` `metrics` |
 
 `history()`, `team()` and `breaks()` need the control plane; a data-plane-only deployment throws
 `FivexerApiException` with code `history_unavailable`.
@@ -99,6 +100,15 @@ log.getEntries().get(0).getEndReason(); // "timeout" -> the platform clocked out
                                         // unattended worker; null while the shift is open
 log.getTotals().getWorkingMs();
 
+// A correction keeps what the record said before; the reason is mandatory and a signed-off
+// period refuses it. reopen()/clearX() send an explicit null — an unset field is left alone.
+client.workers().correctTimeEntry("agent_1", "shift_42",
+        new CorrectTimeEntryInput("kept working after clocking out").reopen());
+client.workers().timeCorrections("agent_1");   // the trail a dispute reads
+
+// The team's working-time report; entries(true) adds the raw log and the per-day series
+client.team().time(new TeamTimeQuery().from("2026-09-01").to("2026-09-08").entries(true));
+
 // One worker's series. Worked time and the lifecycle counters are day-grained, so they are
 // null on hour buckets rather than zero.
 client.history().workerTimeseries("agent_1", new StatsWindowQuery().bucket("day"));
@@ -119,6 +129,20 @@ client.workers().setAvailability("agent_1", false);
 // "Gone for the day" — requeues the backlog so others inherit it now
 WorkerAvailability released = client.workers().setAvailability("agent_1", false, true);
 released.getReleasedTaskIds();  // [task_8fk2, task_9aa3]
+```
+
+```java
+// Edit a live task. Unset fields are left alone; clearX() sends an explicit null.
+UpdateTaskResult edit = client.tasks().update("task_8fk2",
+        new UpdateTaskInput().tags(List.of("german")).clearDescription());
+edit.isRequeued();             // true when the new tags no longer reach the holder
+edit.getPreviousWorkerId();    // who lost it
+
+// The finished-task archive; several statuses travel as one comma-separated parameter
+client.tasks().history(new TaskHistoryQuery().status("completed", "failed").limit(20));
+
+// What removing a worker would hand back and free — show it before remove()
+client.workers().offboarding("agent_1", "2026-09-30");
 ```
 
 The three-argument `assign(taskId, workerId, force)` bypasses the paused/backlog/veto/

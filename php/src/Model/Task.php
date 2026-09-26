@@ -64,6 +64,16 @@ final class Task
         public readonly ?string $workflowStepId = null,
         /** Populated on single-task reads only, never in lists */
         public readonly ?TaskDataSummary $data = null,
+        /**
+         * The appointment: when the work is performed and for how long. A different clock from
+         * $schedule, which says when the task may be handed out.
+         */
+        public readonly ?TimeSlot $slot = null,
+        /**
+         * Who is reserved for that appointment. Null means unbooked — a real answer on a slotted
+         * task, and the one a planner acts on. Populated on single-task reads only.
+         */
+        public readonly ?SlotBooking $booking = null,
     ) {
     }
 
@@ -104,6 +114,10 @@ final class Task
             workflowRunId: isset($data['workflowRunId']) ? (string) $data['workflowRunId'] : null,
             workflowStepId: isset($data['workflowStepId']) ? (string) $data['workflowStepId'] : null,
             data: isset($data['data']) ? TaskDataSummary::fromArray($data['data']) : null,
+            slot: isset($data['slot']) && \is_array($data['slot']) ? TimeSlot::fromArray($data['slot']) : null,
+            booking: isset($data['booking']) && \is_array($data['booking'])
+                ? SlotBooking::fromArray($data['booking'])
+                : null,
         );
     }
 }

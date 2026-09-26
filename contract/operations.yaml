@@ -155,6 +155,31 @@ groups:
             path: /tasks/scheduled
             response: "{ tasks: Task[], count }"
             notes: Held by a `schedule.notBefore` — the only view of work booked but not started.
+          - name: tasks.update
+            method: PATCH
+            path: /tasks/{id}
+            body: UpdateTaskInput
+            response: UpdateTaskResult
+            notes: >-
+                Edit a live task: tags, priority, title, description, context, references, meta.
+                Patch semantics — omitted fields are left alone, `null` clears the clearable ones.
+                Changing `tags` changes who is eligible: if the new tags no longer reach the worker
+                holding the task it is taken back and requeued, and `requeued` says so.
+          - name: tasks.history
+            method: GET
+            path: /tasks/history
+            query: "status?, workerId?, tag?, from?, to?, q?, cursor?, limit?"
+            response: TaskHistoryPage
+            notes: >-
+                Finished tasks, newest first — the archive, not the live stores. `status` may name
+                several (the wire takes one comma-separated value; SDKs accept a list). Page with
+                `nextCursor`. Requires the control plane.
+          - name: tasks.bookings
+            method: GET
+            path: /tasks/bookings
+            query: "from, to, workerId?"
+            response: "{ bookings: SlotBooking[], count }"
+            notes: Booked appointments overlapping a window (epoch ms) — the planner's calendar.
           - name: tasks.unpark
             method: POST
             path: /tasks/{id}/unpark
@@ -182,6 +207,26 @@ groups:
                 204. Stops the template; occurrences already materialized live on unless
                 `dropScheduled=true`. 404 when no such template — removing one twice is not
                 idempotent, and a caller that treats it as such will mask a wrong id.
+
+    - group: tasks.booking
+      plane: workspace
+      operations:
+          - name: tasks.booking.candidates
+            method: GET
+            path: /tasks/{id}/booking/candidates
+            response: "{ candidates: SlotCandidate[], count }"
+            notes: Who could take a slotted task's time, ranked, with what blocks the others.
+          - name: tasks.booking.set
+            method: POST
+            path: /tasks/{id}/booking
+            body: "{ workerId, force? }"
+            response: "{ id, booking: SlotBooking }"
+            notes: Book the slot for a worker. 409 on a clash unless `force`.
+          - name: tasks.booking.release
+            method: DELETE
+            path: /tasks/{id}/booking
+            response: void
+            notes: 204. The slot goes back to being unbooked.
 
     - group: tasks.context
       plane: workspace
@@ -309,6 +354,51 @@ groups:
                 The recorded shift and break log for a window (default: the last 7 days). This
                 is the working-time record EU employers must keep (CJEU C-55/18). The API also
                 serves `format=csv`; SDKs wrap the JSON form only. Requires the control plane.
+          - name: workers.createTimeEntry
+            method: POST
+            path: /workers/{id}/time-entries
+            body: CreateTimeEntryInput
+            response: TimeEntryCorrectionResult
+            notes: A shift worked and never logged. Both ends and a reason are required; a closed period refuses it.
+          - name: workers.correctTimeEntry
+            method: PATCH
+            path: /workers/{id}/time-entries/{entryId}
+            body: CorrectTimeEntryInput
+            response: TimeEntryCorrectionResult
+            notes: >-
+                Change one recorded shift or break, keeping what it said before. The reason is
+                mandatory and a signed-off period refuses the change — a correction, not an edit.
+          - name: workers.timeCorrections
+            method: GET
+            path: /workers/{id}/time-corrections
+            response: "{ workerId, corrections: TimeCorrection[] }"
+            notes: Every change made to this person's records — the trail a dispute reads.
+          - name: workers.offboarding
+            method: GET
+            path: /workers/{id}/offboarding
+            query: "lastDay?"
+            response: WorkerOffboardingSummary
+            notes: What removing this worker would hand back and free. Read-only — show it before workers.remove.
+          - name: workers.links
+            method: GET
+            path: /workers/links
+            query: "connector?"
+            response: "{ links: WorkerLink[] }"
+            notes: Links between workers and the people they are in connected systems (HubSpot owner, Jira account, …).
+          - name: workers.link
+            method: PUT
+            path: /workers/{id}/links/{connector}
+            body: LinkWorkerInput
+            response: WorkerLink
+            notes: >-
+                Say this worker is `vendorUserId` in `connector`, so the connector writes back under
+                them. `tags` are added to the worker's own. Idempotent for the same pair; 409
+                `worker_link_conflict` when either side is linked to somebody else.
+          - name: workers.unlink
+            method: DELETE
+            path: /workers/{id}/links/{connector}
+            response: void
+            notes: 204; 404 when there was no link.
           - name: workers.remove
             method: DELETE
             path: /workers/{id}
@@ -349,6 +439,14 @@ groups:
             notes: >-
                 `selected` is an array in the SDK signature but a single comma-joined query
                 parameter on the wire. Empty/absent array must omit the parameter entirely.
+          - name: skills.expiring
+            method: GET
+            path: /skills/expiring
+            query: "withinDays?, asOf?"
+            response: "{ asOf, skills: ExpiringWorkerSkill[] }"
+            notes: >-
+                Qualifications that have lapsed, or lapse within `withinDays` (default 30).
+                Already-expired rows come first. Requires the control plane.
 
     # ─────────────────────────── decisions ───────────────────────────
     - group: decisions
@@ -702,6 +800,14 @@ groups:
             query: "teamId?"
             response: TeamPresence
             notes: Supervisor view of the same data workers see via the portal plane. Requires the control plane.
+          - name: team.time
+            method: GET
+            path: /team/time
+            query: "from?, to?, teamId?, workerId?"
+            response: TeamTimeResult
+            notes: >-
+                Worked time, breaks and outcomes per worker and per day for a window — the
+                working-time report. Days are UTC. Requires the control plane.
           - name: breaks.metrics
             method: GET
             path: /breaks/metrics
@@ -1177,27 +1283,13 @@ planned:
     # surface; bound with it.
     - { method: GET, path: "/v1/roster/holiday-locations" }
     - { method: GET, path: "/v1/roster/holidays" }
-    # Shipped with the time-analytics work and reachable from the TS SDK
-    # (`fivexer.team.time`); the other three still need the binding.
-    - { method: GET, path: "/v1/team/time" }
-    # Payroll-grade working time: correcting a record, and closing the period
-    # that makes a range of days final. Reachable from the TS SDK
-    # (`workers.correctTimeEntry` / `team.payroll` / `team.closePeriod`), and
-    # driven by the console on its own plane — so nothing hand-written consumes
-    # them yet. They bind with the rest of the working-time surface; a wage
-    # figure is the last shape to commit three more SDKs to while it moves.
-    - { method: PATCH, path: "/v1/workers/{id}/time-entries/{entryId}" }
-    - { method: POST, path: "/v1/workers/{id}/time-entries" }
-    - { method: GET, path: "/v1/workers/{id}/time-corrections" }
+    # Payroll: pricing recorded hours and closing the period that makes a range
+    # of days final. Reachable from the TS SDK (`team.payroll` / `team.closePeriod`)
+    # and driven by the console on its own plane. Correcting a record is bound in
+    # all four SDKs; the priced figures wait — a wage figure is the last shape to
+    # commit three more SDKs to while it moves.
     - { method: GET, path: "/v1/team/time/payroll" }
     - { method: GET, path: "/v1/team/time/closures" }
-    # Connector links: "this worker is that person in HubSpot / Jira / …", so a
-    # worker who was here before a system was connected is not imported twice.
-    # Reachable from the TS SDK (`workers.links` / `link` / `unlink`) and driven by
-    # the console's import review; nothing hand-written consumes them yet.
-    - { method: GET, path: "/v1/workers/links" }
-    - { method: PUT, path: "/v1/workers/{id}/links/{connector}" }
-    - { method: DELETE, path: "/v1/workers/{id}/links/{connector}" }
     # The worker portal's own surface: calendar sync, leave, bookings, the
     # personal time log and timer, open shifts and swaps. The portal has its own
     # client and nothing hand-written reaches these through an SDK yet; they bind
@@ -1230,22 +1322,14 @@ planned:
     - { method: POST, path: "/v1/portal/roster/swaps/{id}/accept" }
     - { method: POST, path: "/v1/portal/roster/swaps/{id}/decline" }
     - { method: POST, path: "/v1/portal/roster/swaps/{id}/withdraw" }
-    # Task timeslots and advance booking, and the finished-task history. Reachable
-    # from the TS SDK and driven by the console; they bind with the task surface.
-    - { method: GET, path: "/v1/tasks/bookings" }
-    - { method: POST, path: "/v1/tasks/{id}/booking" }
-    - { method: DELETE, path: "/v1/tasks/{id}/booking" }
-    - { method: GET, path: "/v1/tasks/{id}/booking/candidates" }
-    - { method: GET, path: "/v1/tasks/history" }
     # Working time beyond the record itself: statutory payroll figures, payroll
-    # analysis and export, per-worker task time, entry metadata and the offboarding
-    # preview. Console-plane, and the wage-figure caution above applies.
+    # analysis and export, per-worker task time and entry metadata. Console-plane,
+    # and the wage-figure caution above applies.
     - { method: GET, path: "/v1/team/time/closures/{closureId}/statutory" }
     - { method: GET, path: "/v1/team/time/payroll/analysis" }
     - { method: GET, path: "/v1/team/time/payroll/export" }
     - { method: GET, path: "/v1/workers/{id}/task-time" }
     - { method: PATCH, path: "/v1/workers/{id}/time-entries/{entryId}/metadata" }
-    - { method: GET, path: "/v1/workers/{id}/offboarding" }
     # Intake (the inbox tray), skill imports and suggestions. Console-driven
     # workflows with no hand-written consumer yet.
     - { method: POST, path: "/v1/intake/messages" }
@@ -1274,10 +1358,6 @@ planned:
     - { method: GET, path: "/v1/worker-auth/devices" }
     - { method: DELETE, path: "/v1/worker-auth/devices/{deviceId}" }
 
-    # Skill expiry. Reachable from the reference TS SDK (`workers.expiringSkills`) and
-    # read by the console; the three hand-written SDKs have not bound it yet, which is
-    # the pre-existing drift the openapi.json refresh made visible rather than caused.
-    - { method: GET, path: "/v1/skills/expiring" }
 
 # ─────────────────────────── non-HTTP surface ───────────────────────────
 helpers:

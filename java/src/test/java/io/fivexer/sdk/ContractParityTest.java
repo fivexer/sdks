@@ -48,6 +48,7 @@ class ContractParityTest {
         map.put("tasks.comments", TaskComments.class);
         map.put("tasks.attachments", TaskAttachments.class);
         map.put("tasks.recurring", TaskRecurring.class);
+        map.put("tasks.booking", TaskBooking.class);
         map.put("tasks", Tasks.class);
         map.put("workers", Workers.class);
         map.put("skills", Skills.class);

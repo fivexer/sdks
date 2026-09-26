@@ -41,12 +41,13 @@ Async is identical (`AsyncFivexer`), just `await` each call.
 
 | Group | Operations |
 |---|---|
-| `client.tasks` | `create` `create_many` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `set_priority` `suggest_workers` |
+| `client.tasks` | `create` `create_many` `check` `get` `list` `cancel` `accept` `ack` `reject` `complete` `assign` `escalate` `parked` `scheduled` `unpark` `update` `set_priority` `history` `bookings` `suggest_workers` |
+| `client.tasks.booking` | `candidates` `set` `release` |
 | `client.tasks.context` | `get` `set` `clear` |
 | `client.tasks.comments` | `add` `list` `remove` |
 | `client.tasks.attachments` | `create` `confirm` `list` `download` `remove` `upload` |
-| `client.workers` | `upsert` `list` `get` `patch` `set_availability` `queue` `remove` |
-| `client.skills` | `create` `list` `get` `patch` `remove` `suggest` |
+| `client.workers` | `upsert` `list` `get` `patch` `set_availability` `queue` `metrics` `time_entries` `create_time_entry` `correct_time_entry` `time_corrections` `offboarding` `links` `link` `unlink` `remove` |
+| `client.skills` | `create` `list` `get` `patch` `remove` `suggest` `expiring` |
 | `client.teams` | `create` `list` `get` `patch` `remove` `members` `set_members` |
 | `client.join_links` | `create` `list` `revoke` |
 | `client.identities` | `list` `invite` `resend_invite` `create` `update` `remove` |
@@ -57,7 +58,7 @@ Async is identical (`AsyncFivexer`), just `await` each call.
 | `client.notifications.sequences` | `list` `create` `get` `update` `remove` |
 | `client.notifications.channels` | `list` `create` `get` `update` `remove` |
 | `client.stats()` / `client.history` | `stats()` `sla_stats()` `queue_audit()` `portal()` `timeseries` `workers` |
-| `client.team` / `client.breaks` | `presence` `metrics` |
+| `client.team` / `client.breaks` | `presence` `time` `metrics` |
 
 `history`, `team` and `breaks` need the control plane; a data-plane-only deployment raises
 `FivexerApiError` with code `history_unavailable`.

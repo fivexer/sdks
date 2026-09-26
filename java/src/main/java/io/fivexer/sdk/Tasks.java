@@ -14,6 +14,13 @@ import io.fivexer.sdk.model.Task;
 import io.fivexer.sdk.model.TaskAction;
 import io.fivexer.sdk.model.TaskPage;
 import io.fivexer.sdk.model.TaskPriority;
+import io.fivexer.sdk.model.SlotBooking;
+import io.fivexer.sdk.model.SlotBookingList;
+import io.fivexer.sdk.model.TaskHistoryPage;
+import io.fivexer.sdk.model.UpdateTaskInput;
+import io.fivexer.sdk.model.UpdateTaskResult;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /** The task lifecycle, plus the operator overrides and the rich-data sub-resources. */
@@ -24,6 +31,7 @@ public final class Tasks {
     private final TaskComments commentsResource;
     private final TaskAttachments attachmentsResource;
     private final TaskRecurring recurringResource;
+    private final TaskBooking bookingResource;
 
     Tasks(Fivexer client) {
         this.client = client;
@@ -31,6 +39,7 @@ public final class Tasks {
         this.commentsResource = new TaskComments(client);
         this.attachmentsResource = new TaskAttachments(client);
         this.recurringResource = new TaskRecurring(client);
+        this.bookingResource = new TaskBooking(client);
     }
 
     /** The rich data stored against a task: title, description, context and references. */
@@ -45,6 +54,9 @@ public final class Tasks {
     /** Standing templates that occurrences are cut from. */
     public TaskRecurring recurring() { return recurringResource; }
 
+    /** Reserving a worker's time for a slotted task. */
+    public TaskBooking booking() { return bookingResource; }
+
     /** Enqueue a task. The response carries the id and {@code queued} status. */
     public Task create(CreateTask input) {
         return client.request("POST", "/tasks", input.toJson(), null, Task.class, false);
@@ -57,6 +69,40 @@ public final class Tasks {
     public TaskPage list(ListTasksQuery query) {
         ListTasksQuery q = query == null ? new ListTasksQuery() : query;
         return client.request("GET", "/tasks", null, q.toQuery(), TaskPage.class, false);
+    }
+
+    /** Finished tasks, newest first — the first page, unfiltered. */
+    public TaskHistoryPage history() {
+        return history(null);
+    }
+
+    /**
+     * Finished tasks, newest first — the archive, not the live stores. Page with {@code
+     * nextCursor}. Requires the control plane.
+     */
+    public TaskHistoryPage history(TaskHistoryQuery query) {
+        TaskHistoryQuery q = query == null ? new TaskHistoryQuery() : query;
+        return client.request("GET", "/tasks/history", null, q.toQuery(), TaskHistoryPage.class, false);
+    }
+
+    /** Booked appointments overlapping a window — the planner's calendar. */
+    public List<SlotBooking> bookings(long from, long to) {
+        return bookings(from, to, null);
+    }
+
+    /**
+     * Booked appointments overlapping a window. Bookings are reservations of a worker's time, not
+     * tasks in a state, which is why they are their own read.
+     *
+     * @param from epoch ms, inclusive
+     * @param to epoch ms; the window may not exceed 90 days
+     * @param workerId one worker's bookings only, or null for everyone's
+     */
+    public List<SlotBooking> bookings(long from, long to, String workerId) {
+        SlotBookingList envelope = client.request("GET", "/tasks/bookings", null,
+                Json.query("from", String.valueOf(from), "to", String.valueOf(to), "workerId", workerId),
+                SlotBookingList.class, false);
+        return envelope.getBookings() == null ? Collections.emptyList() : envelope.getBookings();
     }
 
     public void cancel(String taskId) {
@@ -197,6 +243,19 @@ public final class Tasks {
     public TaskPriority setPriority(String taskId, double priority) {
         return client.request("PATCH", "/tasks/" + Json.enc(taskId),
                 Json.object("priority", priority), null, TaskPriority.class, false);
+    }
+
+    /**
+     * Edit a live task: tags, priority, title, description, context, references, meta. Fields
+     * never set on the input are left alone; its {@code clearX()} methods clear them.
+     *
+     * <p>Changing tags changes who is eligible. If the new tags no longer reach the worker
+     * holding the task, it is taken off them and requeued — check {@link
+     * UpdateTaskResult#isRequeued()}. An edit that leaves the tags alone never moves anything.
+     */
+    public UpdateTaskResult update(String taskId, UpdateTaskInput input) {
+        return client.request("PATCH", "/tasks/" + Json.enc(taskId), input.toJson(), null,
+                UpdateTaskResult.class, false);
     }
 
     /** Dry run: who <em>would</em> match these tags, without creating a task. */

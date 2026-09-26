@@ -6,6 +6,7 @@ namespace Fivexer\SDK\Resource;
 
 use Fivexer\SDK\Fivexer;
 use Fivexer\SDK\Internal\Json;
+use Fivexer\SDK\Model\ExpiringSkillsResult;
 use Fivexer\SDK\Model\PatchSkill;
 use Fivexer\SDK\Model\Skill;
 use Fivexer\SDK\Model\UpsertSkill;
@@ -67,5 +68,22 @@ final class Skills
         ]) ?? [];
         /** @var list<Skill> */
         return Json::parseEach($data, 'skills', [Skill::class, 'fromArray']);
+    }
+
+    /**
+     * Qualifications that have lapsed, or lapse within $withinDays (default 30). Already-expired
+     * rows come first — they are the more urgent half, not the stale half. Requires the control
+     * plane.
+     *
+     * @param string|null $asOf ISO date to judge expiry against, or null for today
+     */
+    public function expiring(?int $withinDays = null, ?string $asOf = null): ExpiringSkillsResult
+    {
+        return ExpiringSkillsResult::fromArray(
+            $this->client->request('GET', '/skills/expiring', null, [
+                'withinDays' => $withinDays,
+                'asOf' => $asOf,
+            ]) ?? []
+        );
     }
 }

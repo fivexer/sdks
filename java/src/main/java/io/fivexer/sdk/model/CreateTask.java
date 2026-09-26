@@ -42,6 +42,7 @@ public class CreateTask {
     private SlaPolicy sla;
     private SchedulePolicy schedule;
     private RecurrencePolicy recurrence;
+    private TimeSlot slot;
     private String teamId;
     private String preferTeamId;
     // Not serialised by Gson: these record the *request* for an explicit null, which toJson()
@@ -77,6 +78,7 @@ public class CreateTask {
     public SlaPolicy getSla() { return sla; }
     public SchedulePolicy getSchedule() { return schedule; }
     public RecurrencePolicy getRecurrence() { return recurrence; }
+    public TimeSlot getSlot() { return slot; }
     public String getTeamId() { return teamId; }
     public String getPreferTeamId() { return preferTeamId; }
 
@@ -122,6 +124,12 @@ public class CreateTask {
 
     /** Make this a standing template instead of a one-off. Mutually exclusive with a schedule. */
     public CreateTask recurrence(RecurrencePolicy recurrence) { this.recurrence = recurrence; return this; }
+
+    /**
+     * Make this an appointment: work performed at a fixed time, with a worker's time reserved
+     * for it ahead of {@code startAt}. Held out of matching until the slot arrives.
+     */
+    public CreateTask slot(TimeSlot slot) { this.slot = slot; return this; }
 
     /** Hard team gate: only members are eligible. Mutually exclusive with {@link #preferTeamId}. */
     public CreateTask teamId(String teamId) { this.teamId = teamId; return this; }

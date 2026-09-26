@@ -54,6 +54,8 @@ final class CreateTask
         private ?string $teamId = null,
         /** Soft team preference: members rank first, everyone else stays eligible */
         private ?string $preferTeamId = null,
+        /** A fixed appointment. Combinable with $schedule, exclusive with $recurrence */
+        private ?TimeSlot $slot = null,
     ) {
         if ($tags === []) {
             throw new \InvalidArgumentException('tags must not be empty');
@@ -217,6 +219,17 @@ final class CreateTask
         return $this;
     }
 
+    /**
+     * A fixed appointment: when the work is performed and for how long. Combinable with a
+     * schedule (the later of the two holds the task) and exclusive with a recurrence, since an
+     * appointment is one wall-clock moment rather than a cadence.
+     */
+    public function slot(TimeSlot $slot): self
+    {
+        $this->slot = $slot;
+        return $this;
+    }
+
     /** Hard team gate: only members are eligible. Exclusive with {@see self::preferTeamId()}. */
     public function teamId(string $teamId): self
     {
@@ -264,6 +277,7 @@ final class CreateTask
             'sla' => $this->sla?->toArray(),
             'schedule' => $this->schedule?->toArray(),
             'recurrence' => $this->recurrence?->toArray(),
+            'slot' => $this->slot?->toArray(),
             'teamId' => $this->teamId,
             'preferTeamId' => $this->preferTeamId,
         ]);

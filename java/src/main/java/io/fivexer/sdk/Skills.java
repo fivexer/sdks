@@ -1,6 +1,7 @@
 package io.fivexer.sdk;
 
 import io.fivexer.sdk.internal.Json;
+import io.fivexer.sdk.model.ExpiringSkillsResult;
 import io.fivexer.sdk.model.PatchSkill;
 import io.fivexer.sdk.model.Skill;
 import io.fivexer.sdk.model.SkillList;
@@ -59,6 +60,23 @@ public final class Skills {
 
     public List<Skill> suggest() {
         return suggest(null, null);
+    }
+
+    /** Qualifications that have lapsed, or lapse within the default 30 days. */
+    public ExpiringSkillsResult expiring() {
+        return expiring(null, null);
+    }
+
+    /**
+     * Qualifications that have lapsed, or lapse within {@code withinDays}. Already-expired rows
+     * come first — they are the more urgent half, not the stale half. Requires the control plane.
+     *
+     * @param withinDays look-ahead in days, or null for the default (30)
+     * @param asOf the day to judge expiry against ({@code YYYY-MM-DD}), or null for today
+     */
+    public ExpiringSkillsResult expiring(Integer withinDays, String asOf) {
+        return client.request("GET", "/skills/expiring", null,
+                Json.query("withinDays", Json.str(withinDays), "asOf", asOf), ExpiringSkillsResult.class, false);
     }
 
     private static List<Skill> unwrap(SkillList envelope) {

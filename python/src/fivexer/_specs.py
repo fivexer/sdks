@@ -22,15 +22,18 @@ from .models import (
     AcceptWorkerInvite,
     AddComment,
     ChangePin,
+    CorrectTimeEntryInput,
     CreateAttachment,
     CreateJoinLink,
     CreateNotificationChannel,
     CreateNotificationSequence,
     CreateTask,
+    CreateTimeEntryInput,
     CreateWorkerIdentity,
     InviteWorkerIdentity,
     JoinWorkspace,
     LearningFeedbackItem,
+    LinkWorkerInput,
     ListDecisionsQuery,
     ListRunsQuery,
     ListTasksQuery,
@@ -43,9 +46,12 @@ from .models import (
     StartRun,
     StatsWindowQuery,
     SuggestWorkers,
+    TaskHistoryQuery,
+    TeamTimeQuery,
     UnparkTask,
     UpdateNotificationChannel,
     UpdateNotificationSequence,
+    UpdateTaskInput,
     UpdateWorkerIdentity,
     UpsertSkill,
     UpsertTeam,
@@ -138,6 +144,36 @@ def tasks_assign(task_id: str, worker_id: str, force: bool | None = None) -> Req
 
 def tasks_set_priority(task_id: str, priority: float) -> RequestSpec:
     return RequestSpec("PATCH", f"/tasks/{enc(task_id)}", body={"priority": priority})
+
+
+def tasks_update(task_id: str, update: UpdateTaskInput) -> RequestSpec:
+    return RequestSpec("PATCH", f"/tasks/{enc(task_id)}", body=body_of(update, UpdateTaskInput))
+
+
+def tasks_history(query: TaskHistoryQuery | None) -> RequestSpec:
+    return RequestSpec("GET", "/tasks/history", query=(query or TaskHistoryQuery()).to_params())
+
+
+def tasks_bookings(from_: int, to: int, worker_id: str | None = None) -> RequestSpec:
+    # The window is required: an unbounded read of every booking has no use a planner would ask for.
+    return RequestSpec("GET", "/tasks/bookings", query=params({"from": from_, "to": to, "workerId": worker_id}))
+
+
+def tasks_booking_candidates(task_id: str) -> RequestSpec:
+    return RequestSpec("GET", f"/tasks/{enc(task_id)}/booking/candidates")
+
+
+def tasks_booking_set(task_id: str, worker_id: str, force: bool = False) -> RequestSpec:
+    # `force` is sent only when set, so a caller who never overrode a clash cannot look like one
+    # who considered it and declined.
+    body: dict[str, Any] = {"workerId": worker_id}
+    if force:
+        body["force"] = True
+    return RequestSpec("POST", f"/tasks/{enc(task_id)}/booking", body=body)
+
+
+def tasks_booking_release(task_id: str) -> RequestSpec:
+    return RequestSpec("DELETE", f"/tasks/{enc(task_id)}/booking")
 
 
 def tasks_suggest_workers(request: SuggestWorkers) -> RequestSpec:
@@ -255,6 +291,38 @@ def workers_remove(worker_id: str) -> RequestSpec:
     return RequestSpec("DELETE", f"/workers/{enc(worker_id)}")
 
 
+def workers_create_time_entry(worker_id: str, entry: CreateTimeEntryInput) -> RequestSpec:
+    return RequestSpec("POST", f"/workers/{enc(worker_id)}/time-entries", body=body_of(entry, CreateTimeEntryInput))
+
+
+def workers_correct_time_entry(worker_id: str, entry_id: str, correction: CorrectTimeEntryInput) -> RequestSpec:
+    return RequestSpec(
+        "PATCH",
+        f"/workers/{enc(worker_id)}/time-entries/{enc(entry_id)}",
+        body=body_of(correction, CorrectTimeEntryInput),
+    )
+
+
+def workers_time_corrections(worker_id: str) -> RequestSpec:
+    return RequestSpec("GET", f"/workers/{enc(worker_id)}/time-corrections")
+
+
+def workers_offboarding(worker_id: str, last_day: str | None = None) -> RequestSpec:
+    return RequestSpec("GET", f"/workers/{enc(worker_id)}/offboarding", query=params({"lastDay": last_day}))
+
+
+def workers_links(connector: str | None = None) -> RequestSpec:
+    return RequestSpec("GET", "/workers/links", query=params({"connector": connector}))
+
+
+def workers_link(worker_id: str, connector: str, link: LinkWorkerInput) -> RequestSpec:
+    return RequestSpec("PUT", f"/workers/{enc(worker_id)}/links/{enc(connector)}", body=body_of(link, LinkWorkerInput))
+
+
+def workers_unlink(worker_id: str, connector: str) -> RequestSpec:
+    return RequestSpec("DELETE", f"/workers/{enc(worker_id)}/links/{enc(connector)}")
+
+
 # ─────────────────────────────── skills ───────────────────────────────
 
 
@@ -278,6 +346,10 @@ def skills_suggest(selected: list[str] | None = None, limit: int | None = None) 
     """`selected` travels as one comma-joined parameter; an empty list omits it entirely."""
     joined = ",".join(selected) if selected else None
     return RequestSpec("GET", "/skills/suggest", query=params({"selected": joined, "limit": limit}))
+
+
+def skills_expiring(within_days: int | None = None, as_of: str | None = None) -> RequestSpec:
+    return RequestSpec("GET", "/skills/expiring", query=params({"withinDays": within_days, "asOf": as_of}))
 
 
 # ─────────────────────────────── decisions ───────────────────────────────
@@ -488,6 +560,10 @@ def stats_worker_timeseries(worker_id: str, query: StatsWindowQuery | None) -> R
 
 def team_presence(team_id: str | None = None) -> RequestSpec:
     return RequestSpec("GET", "/team/presence", query=params({"teamId": team_id}))
+
+
+def team_time(query: TeamTimeQuery | None = None) -> RequestSpec:
+    return RequestSpec("GET", "/team/time", query=(query or TeamTimeQuery()).to_params())
 
 
 def breaks_metrics(

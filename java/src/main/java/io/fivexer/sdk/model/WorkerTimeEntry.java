@@ -29,6 +29,8 @@ public class WorkerTimeEntry {
     private String source;
     private String endReason;
     private String reason;
+    private String description;
+    private String taskId;
 
     /**
      * The row's own id — what a correction addresses. A wrong figure is disputed by row, never
@@ -69,4 +71,10 @@ public class WorkerTimeEntry {
 
     /** Breaks only: the worker's stated reason. */
     public String getReason() { return reason; }
+
+    /** Shifts only: the work note recorded against it, or null. */
+    public String getDescription() { return description; }
+
+    /** Shifts only: the task the time was spent on, or null. */
+    public String getTaskId() { return taskId; }
 }

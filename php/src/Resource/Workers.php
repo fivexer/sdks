@@ -5,12 +5,20 @@ declare(strict_types=1);
 namespace Fivexer\SDK\Resource;
 
 use Fivexer\SDK\Fivexer;
+use Fivexer\SDK\Internal\Json;
+use Fivexer\SDK\Model\CorrectTimeEntryInput;
+use Fivexer\SDK\Model\CreateTimeEntryInput;
+use Fivexer\SDK\Model\LinkWorkerInput;
 use Fivexer\SDK\Model\PatchWorker;
+use Fivexer\SDK\Model\TimeCorrection;
+use Fivexer\SDK\Model\TimeEntryCorrectionResult;
 use Fivexer\SDK\Model\UpsertWorker;
 use Fivexer\SDK\Model\WorkerAvailability;
 use Fivexer\SDK\Model\WorkerDetail;
+use Fivexer\SDK\Model\WorkerLink;
 use Fivexer\SDK\Model\WorkerList;
 use Fivexer\SDK\Model\WorkerMetrics;
+use Fivexer\SDK\Model\WorkerOffboardingSummary;
 use Fivexer\SDK\Model\WorkerQueue;
 use Fivexer\SDK\Model\WorkerTimeEntriesResult;
 
@@ -86,6 +94,110 @@ final class Workers
                 ['from' => $from, 'to' => $to],
             ) ?? []
         );
+    }
+
+    /**
+     * Record a shift that was worked and never logged. Both ends and a reason are required; a
+     * closed period refuses it. Requires the control plane.
+     */
+    public function createTimeEntry(string $workerId, CreateTimeEntryInput $input): TimeEntryCorrectionResult
+    {
+        return TimeEntryCorrectionResult::fromArray(
+            $this->client->request(
+                'POST',
+                '/workers/' . \rawurlencode($workerId) . '/time-entries',
+                $input->toArray(),
+            ) ?? []
+        );
+    }
+
+    /**
+     * Change one recorded shift or break, keeping what it said before. The reason is mandatory
+     * and a signed-off period refuses the change outright — a correction, not an edit.
+     * Requires the control plane.
+     *
+     * @param string $entryId The row's id, from {@see self::timeEntries()}
+     */
+    public function correctTimeEntry(
+        string $workerId,
+        string $entryId,
+        CorrectTimeEntryInput $input,
+    ): TimeEntryCorrectionResult {
+        return TimeEntryCorrectionResult::fromArray(
+            $this->client->request(
+                'PATCH',
+                '/workers/' . \rawurlencode($workerId) . '/time-entries/' . \rawurlencode($entryId),
+                $input->toArray(),
+            ) ?? []
+        );
+    }
+
+    /**
+     * Every change made to this person's records — the trail a dispute reads.
+     *
+     * @return list<TimeCorrection>
+     */
+    public function timeCorrections(string $workerId): array
+    {
+        $data = $this->client->request('GET', '/workers/' . \rawurlencode($workerId) . '/time-corrections') ?? [];
+        /** @var list<TimeCorrection> */
+        return Json::parseEach($data, 'corrections', [TimeCorrection::class, 'fromArray']);
+    }
+
+    /**
+     * What removing this worker would do: tasks handed back to the queue, roster shifts after
+     * the last day freed, open cover, swaps and leave requests closed. Read-only — show it
+     * before {@see self::remove()}.
+     *
+     * @param string|null $lastDay ISO date of their last working day, or null for the server's default
+     */
+    public function offboarding(string $workerId, ?string $lastDay = null): WorkerOffboardingSummary
+    {
+        return WorkerOffboardingSummary::fromArray(
+            $this->client->request(
+                'GET',
+                '/workers/' . \rawurlencode($workerId) . '/offboarding',
+                null,
+                ['lastDay' => $lastDay],
+            ) ?? []
+        );
+    }
+
+    /**
+     * Links between workers and the people they are in connected systems (HubSpot owner, Jira
+     * account, …).
+     *
+     * @param string|null $connector Only this connector's links, or null for all
+     * @return list<WorkerLink>
+     */
+    public function links(?string $connector = null): array
+    {
+        $data = $this->client->request('GET', '/workers/links', null, ['connector' => $connector]) ?? [];
+        /** @var list<WorkerLink> */
+        return Json::parseEach($data, 'links', [WorkerLink::class, 'fromArray']);
+    }
+
+    /**
+     * Say this worker is `vendorUserId` in `connector`, so the connector writes back under them
+     * instead of importing a second worker. Idempotent for the same pair; a 409
+     * `worker_link_conflict` when either side is already linked to somebody else.
+     */
+    public function link(string $workerId, string $connector, LinkWorkerInput $input): WorkerLink
+    {
+        return WorkerLink::fromArray(
+            $this->client->request('PUT', $this->linkPath($workerId, $connector), $input->toArray()) ?? []
+        );
+    }
+
+    /** Remove the link. A 404 when there was none. */
+    public function unlink(string $workerId, string $connector): void
+    {
+        $this->client->request('DELETE', $this->linkPath($workerId, $connector));
+    }
+
+    private function linkPath(string $workerId, string $connector): string
+    {
+        return '/workers/' . \rawurlencode($workerId) . '/links/' . \rawurlencode($connector);
     }
 
     /** Remove a worker and clear their backlog. */

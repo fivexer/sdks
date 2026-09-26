@@ -184,6 +184,12 @@ class Task:
     result: dict[str, Any] | None = None
     # True when served from the archive instead of hot storage
     archived: bool = False
+    # The appointment: when the work is performed and for how long. A different clock from
+    # ``schedule``, which says when the task may be handed out.
+    slot: TimeSlot | None = None
+    # Who is reserved for that appointment. ``None`` on a slotted task means *unbooked* — a real
+    # answer, and the one a planner acts on. Populated on single-task reads only.
+    booking: SlotBooking | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> Task:
@@ -213,6 +219,8 @@ class Task:
             data=None if summary is None else TaskDataSummary.from_json(summary),
             result=data.get("result"),
             archived=bool(data.get("archived", False)),
+            slot=_policy(data.get("slot"), TimeSlot),
+            booking=_policy(data.get("booking"), SlotBooking),
         )
 
 
@@ -486,6 +494,9 @@ class CreateTask:
     team_id: str | None = None
     # Soft team preference: members rank first, everyone else stays eligible
     prefer_team_id: str | None = None
+    # An appointment: when the work is performed and for how long. Ahead of it a worker is
+    # booked for the task; see ``tasks.booking``
+    slot: TimeSlot | None = None
 
     def to_json(self) -> dict[str, Any]:
         payload = compact(
@@ -511,6 +522,7 @@ class CreateTask:
                 "recurrence": None if self.recurrence is None else self.recurrence.to_json(),
                 "teamId": self.team_id,
                 "preferTeamId": self.prefer_team_id,
+                "slot": None if self.slot is None else self.slot.to_json(),
             }
         )
         # escalation and sla are nullable on the wire in a way the others are not: an explicit
@@ -590,6 +602,284 @@ class AssignTaskResult:
             status=data.get("status", "pending"),
             worker_id=data.get("workerId", ""),
             previous_worker_id=data.get("previousWorkerId"),
+        )
+
+
+# ─────────────────────────────── editing a live task ───────────────────────────────
+
+
+@dataclass
+class UpdateTaskInput:
+    """Patch for ``client.tasks.update``: edit a live task in place.
+
+    Patch semantics. A field left as ``None`` is omitted and the stored value stays. The nullable
+    ones — ``title``, ``description``, ``context``, ``references``, ``meta`` — are cleared by
+    passing :data:`CLEAR`, which sends an explicit ``null``; ``tags`` and ``priority`` cannot be
+    cleared. Changing ``tags`` changes who is eligible: read ``requeued`` on the result.
+    """
+
+    tags: list[str] | None = None
+    priority: float | None = None
+    title: str | None = None
+    description: str | None = None
+    context: dict[str, Any] | None = None
+    references: list[TaskReferenceInput] | None = None
+    meta: dict[str, Any] | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        references: Any = self.references
+        if isinstance(references, list):
+            references = [r.to_json() for r in references]
+        payload = compact(
+            {
+                "tags": self.tags,
+                "priority": self.priority,
+                "title": self.title,
+                "description": self.description,
+                "context": self.context,
+                "references": references,
+                "meta": self.meta,
+            }
+        )
+        for key, value in list(payload.items()):
+            if value is CLEAR:
+                payload[key] = None
+        return payload
+
+
+@dataclass
+class UpdateTaskResult:
+    """The task after ``tasks.update``.
+
+    ``requeued`` is the part not to skip: when the new tags no longer reach the worker holding
+    the task, it is taken off them and returned to the queue, and ``previous_worker_id`` names
+    who lost it. The method never picks the replacement — the next matching pass does.
+    """
+
+    id: str
+    # Where the task is now — 'queued' when the edit sent it back for rematching
+    status: str
+    tags: list[str] = field(default_factory=list)
+    priority: float | None = None
+    requeued: bool = False
+    previous_worker_id: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> UpdateTaskResult:
+        return cls(
+            id=data["id"],
+            status=data.get("status", ""),
+            tags=list(data.get("tags") or []),
+            priority=data.get("priority"),
+            requeued=bool(data.get("requeued", False)),
+            previous_worker_id=data.get("previousWorkerId"),
+        )
+
+
+# ─────────────────────────────── timeslots & booking ───────────────────────────────
+
+
+@dataclass
+class TimeSlot:
+    """The appointment: when the work is performed and for how long.
+
+    A different clock from :class:`SchedulePolicy`, which says when a task may be *handed out*.
+    A slotted task is held until its slot arrives; ahead of that a worker is reserved for it.
+    """
+
+    # Epoch ms at which the work is performed
+    start_at: int
+    # How long it takes, in ms. At least a minute, at most 24 hours
+    duration_ms: int
+    # How far ahead of start_at a worker may be reserved. Server default: a week
+    book_ahead_ms: int | None = None
+    # If start_at arrives with nobody booked: 'queue' (default) | 'park' | 'drop'
+    on_unbooked: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact({"bookAheadMs": self.book_ahead_ms, "onUnbooked": self.on_unbooked})
+        payload["startAt"] = self.start_at
+        payload["durationMs"] = self.duration_ms
+        return payload
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TimeSlot:
+        return cls(
+            start_at=int(data.get("startAt", 0)),
+            duration_ms=int(data.get("durationMs", 0)),
+            book_ahead_ms=_int_or_none(data.get("bookAheadMs")),
+            on_unbooked=data.get("onUnbooked"),
+        )
+
+
+@dataclass
+class SlotConflict:
+    """A stretch of a worker's time that conflicts with a slot, and why."""
+
+    from_: int
+    to: int
+    reason: str
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SlotConflict:
+        return cls(from_=int(data.get("from", 0)), to=int(data.get("to", 0)), reason=data.get("reason", ""))
+
+
+@dataclass
+class SlotBooking:
+    """A worker reserved for a slotted task's appointment."""
+
+    task_id: str
+    worker_id: str
+    start_at: int
+    end_at: int
+    # When the reservation was made
+    booked_at: int
+    # 'sweep' booked it automatically; 'manual' is a planner's own call
+    source: str
+    # Soft conflicts the booking was made over (outside a rostered shift, a busy calendar).
+    # An approved absence is never here: it refuses the booking instead.
+    warnings: list[SlotConflict] | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SlotBooking:
+        return cls(
+            task_id=data.get("taskId", ""),
+            worker_id=data.get("workerId", ""),
+            start_at=int(data.get("startAt", 0)),
+            end_at=int(data.get("endAt", 0)),
+            booked_at=int(data.get("bookedAt", 0)),
+            source=data.get("source", ""),
+            warnings=_each_or_none(data, "warnings", SlotConflict.from_json),
+        )
+
+
+@dataclass
+class SlotCandidate:
+    """Who could take a slotted task's time, ranked, with what blocks the others."""
+
+    worker_id: str
+    # Match score, as the readiness check reports it
+    score: float
+    # Base priority plus score and any geo/learning boost — what ranks them
+    effective_priority: float
+    # Whether a booking for this worker would go through right now
+    bookable: bool
+    # Why they are or are not eligible, in the decision traces' vocabulary
+    reasons: list[dict[str, Any]] = field(default_factory=list)
+    # An appointment already on them that overlaps this one
+    clashing_task_id: str | None = None
+    # Approved absences covering the slot. These refuse a booking
+    blocked: list[SlotConflict] | None = None
+    # Soft conflicts. These allow it, and are recorded on the booking
+    warnings: list[SlotConflict] | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> SlotCandidate:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            score=float(data.get("score", 0)),
+            effective_priority=float(data.get("effectivePriority", 0)),
+            bookable=bool(data.get("bookable", False)),
+            reasons=[dict(r) for r in (data.get("reasons") or [])],
+            clashing_task_id=data.get("clashingTaskId"),
+            blocked=_each_or_none(data, "blocked", SlotConflict.from_json),
+            warnings=_each_or_none(data, "warnings", SlotConflict.from_json),
+        )
+
+
+# ─────────────────────────────── task history (the archive) ───────────────────────────────
+
+
+@dataclass
+class ArchivedTask:
+    """One finished task, from ``tasks.history`` — the archive, not the live stores."""
+
+    id: str
+    # 'completed' | 'cancelled' | 'failed' | 'expired'
+    status: str
+    # When it reached its terminal state (epoch ms)
+    terminal_at: int
+    tags: list[str] = field(default_factory=list)
+    priority: float | None = None
+    worker_id: str | None = None
+    created_at: int | None = None
+    # When it was matched to its worker; None if it never was (cancelled while queued)
+    matched_at: int | None = None
+    meta: dict[str, Any] | None = None
+    title: str | None = None
+    result: dict[str, Any] | None = None
+    data: TaskDataSummary | None = None
+    archived: bool = True
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> ArchivedTask:
+        summary = data.get("data")
+        return cls(
+            id=data["id"],
+            status=data.get("status", ""),
+            terminal_at=int(data.get("terminalAt", 0)),
+            tags=list(data.get("tags") or []),
+            priority=data.get("priority"),
+            worker_id=data.get("workerId"),
+            created_at=_int_or_none(data.get("createdAt")),
+            matched_at=_int_or_none(data.get("matchedAt")),
+            meta=data.get("meta"),
+            title=data.get("title"),
+            result=data.get("result"),
+            data=None if summary is None else TaskDataSummary.from_json(summary),
+            archived=bool(data.get("archived", True)),
+        )
+
+
+@dataclass
+class TaskHistoryPage:
+    tasks: list[ArchivedTask] = field(default_factory=list)
+    # Opaque; pass back as TaskHistoryQuery.cursor. None on the last page
+    next_cursor: str | None = None
+    has_more: bool = False
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TaskHistoryPage:
+        return cls(
+            tasks=_each(data, "tasks", ArchivedTask.from_json),
+            next_cursor=data.get("nextCursor"),
+            has_more=bool(data.get("hasMore", False)),
+        )
+
+
+@dataclass
+class TaskHistoryQuery:
+    """Filter for ``tasks.history``. Every field is optional; omitted means unfiltered."""
+
+    # One terminal status or several. The wire takes one comma-separated value
+    status: str | list[str] | None = None
+    worker_id: str | None = None
+    # One tag the task carried
+    tag: str | None = None
+    # Half-open window on the finish time, ISO-8601: from_ inclusive, to exclusive
+    from_: str | None = None
+    to: str | None = None
+    # Substring of the title or the task id, case-insensitive. Ignored below two characters
+    q: str | None = None
+    cursor: str | None = None
+    # Up to 100; 50 by default
+    limit: int | None = None
+
+    def to_params(self) -> dict[str, str]:
+        status = ",".join(self.status) if isinstance(self.status, list) else self.status
+        return params(
+            {
+                # An empty list joins to "" — treat it as "not filtered" rather than sending it
+                "status": status or None,
+                "workerId": self.worker_id,
+                "tag": self.tag,
+                "from": self.from_,
+                "to": self.to,
+                "q": self.q,
+                "cursor": self.cursor,
+                "limit": self.limit,
+            }
         )
 
 
@@ -860,6 +1150,47 @@ class PatchSkill:
 
     def to_json(self) -> dict[str, Any]:
         return compact({"name": self.name, "description": self.description})
+
+
+@dataclass
+class ExpiringWorkerSkill:
+    """One qualification that has lapsed, or lapses soon."""
+
+    worker_id: str
+    # The person's portal label where they have one, otherwise their worker id
+    label: str
+    skill_id: str
+    key: str
+    name: str
+    # Always set — a qualification with no expiry is never in this list
+    valid_until: str
+    # Already lapsed, judged against the caller's own day
+    expired: bool = False
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> ExpiringWorkerSkill:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            label=data.get("label", ""),
+            skill_id=data.get("skillId", ""),
+            key=data.get("key", ""),
+            name=data.get("name", ""),
+            valid_until=data.get("validUntil", ""),
+            expired=bool(data.get("expired", False)),
+        )
+
+
+@dataclass
+class ExpiringSkills:
+    """``skills.expiring``: already-expired rows first — they are the more urgent half."""
+
+    # The day the expiry was judged against
+    as_of: str
+    skills: list[ExpiringWorkerSkill] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> ExpiringSkills:
+        return cls(as_of=data.get("asOf", ""), skills=_each(data, "skills", ExpiringWorkerSkill.from_json))
 
 
 @dataclass
@@ -2132,6 +2463,161 @@ class TeamPresence:
         )
 
 
+# ─────────────────────────────── team working time ───────────────────────────────
+
+
+@dataclass
+class TeamTimeQuery:
+    """Window and scope for ``team.time``. Days are UTC; the server defaults the window."""
+
+    from_: str | None = None  # ISO-8601
+    to: str | None = None  # ISO-8601
+    team_id: str | None = None
+    worker_id: str | None = None
+    # Fetch the raw shift/break log too — needed for a timeline and the per-day series
+    entries: bool | None = None
+
+    def to_params(self) -> dict[str, str]:
+        return params(
+            {
+                "from": self.from_,
+                "to": self.to,
+                "teamId": self.team_id,
+                "workerId": self.worker_id,
+                # Lowercase, as the server parses it — Python's repr would send "True"
+                "entries": None if self.entries is None else str(self.entries).lower(),
+            }
+        )
+
+
+@dataclass
+class TeamTimeWorker:
+    """One person's worked time, breaks and outcomes over the window."""
+
+    worker_id: str
+    label: str = ""
+    shift_count: int = 0
+    # Time on shift inside the window — breaks included, they happen on shift
+    on_shift_ms: int = 0
+    break_count: int = 0
+    break_ms: int = 0
+    # on_shift_ms − break_ms: the worked-time figure
+    working_ms: int = 0
+    # A shift row with no end: on shift now, or never clocked out
+    open_shift: bool = False
+    open_break: bool = False
+    completed: int = 0
+    offered: int = 0
+    accepted: int = 0
+    # Offers this worker explicitly turned down
+    rejected: int = 0
+    # Offers that timed out unanswered while this worker held them
+    expired: int = 0
+    # Accepted work that ended in failure, including an SLA completion breach
+    failed: int = 0
+    # Pending work taken back by the idle sweep or an operator
+    released: int = 0
+    # Present only when the query asked for entries
+    entries: list[WorkerTimeEntry] | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TeamTimeWorker:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            label=data.get("label", ""),
+            shift_count=int(data.get("shiftCount", 0)),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_count=int(data.get("breakCount", 0)),
+            break_ms=int(data.get("breakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+            open_shift=bool(data.get("openShift", False)),
+            open_break=bool(data.get("openBreak", False)),
+            completed=int(data.get("completed", 0)),
+            offered=int(data.get("offered", 0)),
+            accepted=int(data.get("accepted", 0)),
+            rejected=int(data.get("rejected", 0)),
+            expired=int(data.get("expired", 0)),
+            failed=int(data.get("failed", 0)),
+            released=int(data.get("released", 0)),
+            entries=_each_or_none(data, "entries", WorkerTimeEntry.from_json),
+        )
+
+
+@dataclass
+class TeamTimeDay:
+    day: str  # YYYY-MM-DD, UTC
+    on_shift_ms: int = 0
+    break_ms: int = 0
+    working_ms: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TeamTimeDay:
+        return cls(
+            day=data.get("day", ""),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_ms=int(data.get("breakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+        )
+
+
+@dataclass
+class TeamTimeTotals:
+    worker_count: int = 0
+    shift_count: int = 0
+    on_shift_ms: int = 0
+    break_count: int = 0
+    break_ms: int = 0
+    working_ms: int = 0
+    completed: int = 0
+    offered: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    expired: int = 0
+    failed: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TeamTimeTotals:
+        return cls(
+            worker_count=int(data.get("workerCount", 0)),
+            shift_count=int(data.get("shiftCount", 0)),
+            on_shift_ms=int(data.get("onShiftMs", 0)),
+            break_count=int(data.get("breakCount", 0)),
+            break_ms=int(data.get("breakMs", 0)),
+            working_ms=int(data.get("workingMs", 0)),
+            completed=int(data.get("completed", 0)),
+            offered=int(data.get("offered", 0)),
+            accepted=int(data.get("accepted", 0)),
+            rejected=int(data.get("rejected", 0)),
+            expired=int(data.get("expired", 0)),
+            failed=int(data.get("failed", 0)),
+        )
+
+
+@dataclass
+class TeamTimeResult:
+    """The working-time report: worked time, breaks and outcomes per worker for a window."""
+
+    from_: str = ""
+    to: str = ""
+    workers: list[TeamTimeWorker] = field(default_factory=list)
+    # None unless entries were requested — the series is derived from the log
+    days: list[TeamTimeDay] | None = None
+    totals: TeamTimeTotals = field(default_factory=TeamTimeTotals)
+    # The window held more log rows than one read returns; the record is incomplete
+    truncated: bool = False
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TeamTimeResult:
+        return cls(
+            from_=data.get("from", ""),
+            to=data.get("to", ""),
+            workers=_each(data, "workers", TeamTimeWorker.from_json),
+            days=_each_or_none(data, "days", TeamTimeDay.from_json),
+            totals=TeamTimeTotals.from_json(data.get("totals") or {}),
+            truncated=bool(data.get("truncated", False)),
+        )
+
+
 @dataclass
 class WorkerBreak:
     id: str
@@ -2313,6 +2799,8 @@ class WorkerMetricsToday:
     #: Additive — absent on servers predating the shift log.
     on_shift_ms: int = 0
     shift_count: int = 0
+    #: Start of the currently open shift (ISO-8601); None while off shift.
+    current_shift_started_at: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerMetricsToday:
@@ -2326,6 +2814,7 @@ class WorkerMetricsToday:
             working_ms=int(data.get("workingMs", 0)),
             on_shift_ms=int(data.get("onShiftMs", 0)),
             shift_count=int(data.get("shiftCount", 0)),
+            current_shift_started_at=data.get("currentShiftStartedAt"),
         )
 
 
@@ -2784,6 +3273,9 @@ class WorkerTimeEntry:
     end_reason: str | None = None
     #: Breaks only: the worker's stated reason.
     reason: str | None = None
+    #: Shifts only: the work note and the task the time was spent on.
+    description: str | None = None
+    task_id: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeEntry:
@@ -2801,6 +3293,8 @@ class WorkerTimeEntry:
             source=data.get("source"),
             end_reason=data.get("endReason"),
             reason=data.get("reason"),
+            description=data.get("description"),
+            task_id=data.get("taskId"),
         )
 
 
@@ -2843,6 +3337,307 @@ class WorkerTimeEntriesResult:
             entries=_each(data, "entries", WorkerTimeEntry.from_json),
             totals=WorkerTimeTotals.from_json(data.get("totals") or {}),
         )
+
+
+# ─────────────────────────────── time-record corrections ───────────────────────────────
+#
+# The log is written by a switch somebody has to remember to flip, so it is wrong in two familiar
+# ways: an end nobody clocked, and a start that came late. A correction keeps what the record said
+# before, carries a mandatory reason, and is refused outright inside a signed-off period — that is
+# what keeps it a correction rather than an edit.
+
+
+@dataclass
+class TimeEntryBreakInput:
+    """One break inside a shift, as sent with a correction or a created shift.
+
+    With an ``id`` it is that existing break, moved or left alone; without one it is new.
+    ``ended_at=None`` sends an explicit ``null`` — a break still open — which a created shift
+    does not accept.
+    """
+
+    started_at: str
+    ended_at: str | None
+    id: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact({"id": self.id})
+        payload["startedAt"] = self.started_at
+        payload["endedAt"] = self.ended_at
+        return payload
+
+
+@dataclass
+class CorrectTimeEntryInput:
+    """Body for ``workers.correct_time_entry``. ``note`` — the reason — is required.
+
+    ``None`` leaves a field as it is. ``ended_at``, ``description`` and ``task_id`` are nullable on
+    the wire: pass :data:`CLEAR` to send ``null`` (``ended_at=CLEAR`` reopens a shift closed by
+    mistake while somebody kept working).
+    """
+
+    note: str
+    started_at: str | None = None
+    ended_at: str | None = None
+    # 'shift' | 'break' — saves a lookup when the caller already knows which log the id is from
+    type: str | None = None
+    # Shifts only: every break the shift holds afterwards, saved with it in one transaction. A
+    # break inside the shift that is not listed is removed. None leaves the breaks alone
+    breaks: list[TimeEntryBreakInput] | None = None
+    # Shifts only: the work note and task, saved with the rest of the change
+    description: str | None = None
+    task_id: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact(
+            {
+                "startedAt": self.started_at,
+                "endedAt": self.ended_at,
+                "type": self.type,
+                "breaks": None if self.breaks is None else [b.to_json() for b in self.breaks],
+                "description": self.description,
+                "taskId": self.task_id,
+            }
+        )
+        for key, value in list(payload.items()):
+            if value is CLEAR:
+                payload[key] = None
+        payload["note"] = self.note
+        return payload
+
+
+@dataclass
+class CreateTimeEntryInput:
+    """Body for ``workers.create_time_entry``: a shift worked and never logged. Both ends and the
+    reason (``note``) are required."""
+
+    started_at: str
+    ended_at: str
+    note: str
+    # Breaks taken inside it. Needs a worker with a portal login — breaks are filed under it
+    breaks: list[TimeEntryBreakInput] | None = None
+    description: str | None = None
+    task_id: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact(
+            {
+                "breaks": None if self.breaks is None else [b.to_json() for b in self.breaks],
+                "description": self.description,
+                "taskId": self.task_id,
+            }
+        )
+        payload["startedAt"] = self.started_at
+        payload["endedAt"] = self.ended_at
+        payload["note"] = self.note
+        return payload
+
+
+@dataclass
+class CorrectedTimeEntry:
+    """A shift or break as it stands after a correction."""
+
+    id: str
+    type: str  # 'shift' | 'break'
+    started_at: str
+    ended_at: str | None = None
+    corrected: bool = True
+    source: str | None = None
+    end_reason: str | None = None
+    reason: str | None = None
+    # Shifts: the note and task the record carries after the change
+    description: str | None = None
+    task_id: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> CorrectedTimeEntry:
+        return cls(
+            id=data.get("id", ""),
+            type=data.get("type", ""),
+            started_at=data.get("startedAt", ""),
+            ended_at=data.get("endedAt"),
+            corrected=bool(data.get("corrected", True)),
+            source=data.get("source"),
+            end_reason=data.get("endReason"),
+            reason=data.get("reason"),
+            description=data.get("description"),
+            task_id=data.get("taskId"),
+        )
+
+
+@dataclass
+class TimeCorrection:
+    """One change made to a person's time record — the trail a dispute reads."""
+
+    id: str
+    entry_type: str  # 'shift' | 'break'
+    entry_id: str
+    worker_id: str
+    # What the row held before. None when this change created the row
+    before: dict[str, Any] | None
+    after: dict[str, Any]
+    note: str
+    # Denormalized at write time, so the trail survives the author leaving
+    by: str | None
+    at: str
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TimeCorrection:
+        return cls(
+            id=data.get("id", ""),
+            entry_type=data.get("entryType", ""),
+            entry_id=data.get("entryId", ""),
+            worker_id=data.get("workerId", ""),
+            before=data.get("before"),
+            after=dict(data.get("after") or {}),
+            note=data.get("note", ""),
+            by=data.get("by"),
+            at=data.get("at", ""),
+        )
+
+
+@dataclass
+class TimeEntryCorrectionResult:
+    """The corrected (or created) entry beside the trail entry that produced it.
+
+    ``breaks`` and ``corrections`` are present when a shift was saved with its breaks: every break
+    it holds afterwards, and one trail entry per record touched (the shift's first).
+    """
+
+    entry: CorrectedTimeEntry
+    correction: TimeCorrection
+    breaks: list[CorrectedTimeEntry] | None = None
+    corrections: list[TimeCorrection] | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TimeEntryCorrectionResult:
+        return cls(
+            entry=CorrectedTimeEntry.from_json(data.get("entry") or {}),
+            correction=TimeCorrection.from_json(data.get("correction") or {}),
+            breaks=_each_or_none(data, "breaks", CorrectedTimeEntry.from_json),
+            corrections=_each_or_none(data, "corrections", TimeCorrection.from_json),
+        )
+
+
+@dataclass
+class WorkerTimeCorrections:
+    """``workers.time_corrections``: every change made to one person's records."""
+
+    worker_id: str
+    corrections: list[TimeCorrection] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeCorrections:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            corrections=_each(data, "corrections", TimeCorrection.from_json),
+        )
+
+
+# ─────────────────────────────── offboarding & connector links ───────────────────────────────
+
+
+@dataclass
+class OffboardingTaskCounts:
+    """Work that goes back to the queue when the worker is removed."""
+
+    pending: int = 0
+    accepted: int = 0
+    booked: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> OffboardingTaskCounts:
+        return cls(
+            pending=int(data.get("pending", 0)),
+            accepted=int(data.get("accepted", 0)),
+            booked=int(data.get("booked", 0)),
+        )
+
+
+@dataclass
+class OffboardingRoster:
+    """A roster with shifts after the last day naming the worker."""
+
+    roster_id: str
+    name: str
+    published: bool
+    shifts: int
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> OffboardingRoster:
+        return cls(
+            roster_id=data.get("rosterId", ""),
+            name=data.get("name", ""),
+            published=bool(data.get("published", False)),
+            shifts=int(data.get("shifts", 0)),
+        )
+
+
+@dataclass
+class WorkerOffboardingSummary:
+    """What removing a worker would hand back and free. Read-only — show it before
+    ``workers.remove``."""
+
+    worker_id: str
+    # Their last working day. Shifts after it are freed
+    last_day: str
+    tasks: OffboardingTaskCounts = field(default_factory=OffboardingTaskCounts)
+    rosters: list[OffboardingRoster] = field(default_factory=list)
+    cover_requests: int = 0
+    cover_offers: int = 0
+    swaps: int = 0
+    pending_time_off: int = 0
+    leave_policies: int = 0
+    teams: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerOffboardingSummary:
+        return cls(
+            worker_id=data.get("workerId", ""),
+            last_day=data.get("lastDay", ""),
+            tasks=OffboardingTaskCounts.from_json(data.get("tasks") or {}),
+            rosters=_each(data, "rosters", OffboardingRoster.from_json),
+            cover_requests=int(data.get("coverRequests", 0)),
+            cover_offers=int(data.get("coverOffers", 0)),
+            swaps=int(data.get("swaps", 0)),
+            pending_time_off=int(data.get("pendingTimeOff", 0)),
+            leave_policies=int(data.get("leavePolicies", 0)),
+            teams=int(data.get("teams", 0)),
+        )
+
+
+@dataclass
+class WorkerLink:
+    """This worker is that person in a connected system (a HubSpot owner, a Jira account, …)."""
+
+    # 'hubspot' | 'salesforce' | 'pipedrive' | 'jira' | 'scoro' | …
+    connector: str
+    vendor_user_id: str
+    worker_id: str
+    created_at: str
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> WorkerLink:
+        return cls(
+            connector=data.get("connector", ""),
+            vendor_user_id=data.get("vendorUserId", ""),
+            worker_id=data.get("workerId", ""),
+            created_at=data.get("createdAt", ""),
+        )
+
+
+@dataclass
+class LinkWorkerInput:
+    """Body for ``workers.link``."""
+
+    vendor_user_id: str
+    # Added to the worker's tags — a union, never a replacement
+    tags: list[str] | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        payload = compact({"tags": self.tags})
+        payload["vendorUserId"] = self.vendor_user_id
+        return payload
 
 
 @dataclass

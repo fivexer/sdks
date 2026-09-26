@@ -5,6 +5,44 @@ language. The `/v1` API contract version each release targets is noted when rele
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [python-0.8.0] / [java-0.6.0] — editing live tasks, slots, working-time corrections, links
+
+Targets `/v1` as of 2026-09-26. Python `0.8.0`, Java `0.6.0`, PHP `dev-main`. Every operation
+below is in all three SDKs and in the reference TypeScript SDK; `contract/operations.yaml` lists
+them as implemented and the field-parity gate passes.
+
+### Added
+- **`tasks.update`** (`PATCH /tasks/{id}`): edit a live task — tags, priority, title,
+  description, context, references, meta. Omitted fields are left alone; the clearable ones are
+  cleared explicitly (Python's `CLEAR` sentinel, Java and PHP `clearX()`). A retag that no longer
+  reaches the holder takes the task back to the queue, and `UpdateTaskResult.requeued` says so —
+  without it a retag would look like a silent no-op. `set_priority` keeps its old return type.
+- **`tasks.history`**: finished tasks, newest first, paged by cursor. `status` takes several
+  values (sent as one comma-separated parameter).
+- **Timeslots and booking**: `CreateTask.slot` / `Task.slot` / `Task.booking`, `tasks.bookings`
+  (the planner's calendar for a window), and `tasks.booking.candidates` / `set` / `release`.
+  `force` is sent only when asked for.
+- **Working-time corrections**: `workers.create_time_entry` (a shift worked and never logged),
+  `workers.correct_time_entry` (change a recorded shift or break, keeping what it said before)
+  and `workers.time_corrections` (the trail a dispute reads). A reason is required; a closed
+  period refuses both. `reopen()` / `CLEAR` sends `endedAt: null`.
+- **`workers.links` / `link` / `unlink`**: say which worker is which person in a connected
+  system (HubSpot owner, Jira account, …), so a connector writes back under an existing worker
+  instead of importing them twice. `tags` are added to the worker's own.
+- **`workers.offboarding`**: what removing a worker would hand back and free — show it before
+  `workers.remove`.
+- **`skills.expiring`**: qualifications that have lapsed or lapse within a window, expired first.
+- **`team.time`**: worked time, breaks and outcomes per worker and per day for a window.
+- Fields the reference SDK already had: `WorkerMetricsToday.currentShiftStartedAt`,
+  `WorkerTimeEntry.description` / `taskId`, `Task.acceptedAt`, `EscalationPolicy.offerCooldownMs`,
+  `RecurrencePolicy.times`, and `WorkerMe.emailNotices` / `pushCategories`.
+
+### Not yet
+Payroll figures and period closing, roster authoring, intake, skill imports, suggestions,
+per-worker task time and time-entry metadata stay `planned:` in the contract. The wage figures
+are the reason for the first: they are the last shape to commit three more SDKs to while they
+still move.
+
 ## [python-0.7.0] / [java-0.5.0] — worker locale, corrected time records
 
 Targets `/v1` as of 2026-09-10. Python `0.7.0`, Java `0.5.0`, PHP `dev-main`.

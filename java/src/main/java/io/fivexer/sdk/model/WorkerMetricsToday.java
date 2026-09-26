@@ -16,6 +16,7 @@ public class WorkerMetricsToday {
     private long workingMs;
     private long onShiftMs;
     private int shiftCount;
+    private String currentShiftStartedAt;
 
     public String getWorkerId() { return workerId; }
     public String getSince() { return since; }
@@ -35,4 +36,10 @@ public class WorkerMetricsToday {
 
     /** Additive — zero on servers predating the shift log. */
     public int getShiftCount() { return shiftCount; }
+
+    /**
+     * When the shift in progress began (ISO-8601), or null when not on shift. Additive — null on
+     * servers predating it.
+     */
+    public String getCurrentShiftStartedAt() { return currentShiftStartedAt; }
 }

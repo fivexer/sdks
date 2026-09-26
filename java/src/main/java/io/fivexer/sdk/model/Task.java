@@ -35,6 +35,8 @@ public class Task {
     // The recorded accept, on an accepted task; null where the hold is not recorded
     private Long acceptedAt;
     private SchedulePolicy schedule;
+    private TimeSlot slot;             // set on appointment tasks
+    private SlotBooking booking;       // the reservation ahead of the slot, when one is made
     private String workflowRunId;      // set on workflow-step tasks
     private String workflowStepId;
     private TaskDataSummary data;      // single-task reads only, never in lists
@@ -72,6 +74,16 @@ public class Task {
      */
     public Long getAcceptedAt() { return acceptedAt; }
     public SchedulePolicy getSchedule() { return schedule; }
+
+    /** The appointment this task is performed at, or null for an ordinary task. */
+    public TimeSlot getSlot() { return slot; }
+
+    /**
+     * Whose time is reserved for this slotted task — the real answer to "who is on this" ahead
+     * of {@code startAt}, and the one a planner acts on. Null when unbooked or not slotted.
+     */
+    public SlotBooking getBooking() { return booking; }
+
     public String getWorkflowRunId() { return workflowRunId; }
     public String getWorkflowStepId() { return workflowStepId; }
     public TaskDataSummary getData() { return data; }
