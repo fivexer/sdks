@@ -167,6 +167,14 @@ CONSOLE_PLANE_ONLY = {
     # before they have settled is the cost this defers; when the surface stops
     # moving these move to operations.yaml and the other three SDKs together.
     "RosterSettings": "console rostering settings; the workspace's own working-time rules",
+    "RosterCycle": "console planning cycle; roster autopilot settings",
+    "RosterCycleConfig": "console planning cycle cadence and deadlines",
+    "RosterCycleAutonomy": "console planning cycle autonomy level",
+    "RosterCycleIssue": "console planning cycle validation issue",
+    "RosterCyclePreview": "console planning cycle date preview",
+    "SaveRosterCycleInput": "console write shape for a planning cycle",
+    "RosterCycleRun": "console planning cycle run",
+    "RosterCycleEvent": "console planning cycle log entry",
     "RosterHolidayLocation": "console rostering; a country or region the holiday calendar covers",
     "RosterHoliday": "console rostering; one public holiday the calendar resolved",
     "RosterContractHours": "console rostering; planned against contracted hours, from the engine",
