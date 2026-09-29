@@ -144,6 +144,7 @@ PLANNED = {
     "WishOutcome": "GET /v1/portal/preferences/outcome — one wish, restated against what happened",
     "PortalPreferences": "GET/PUT /v1/portal/preferences — the worker portal's own read/write shape",
     "PortalPreferencesOutcome": "GET /v1/portal/preferences/outcome — the period's wishes, resolved",
+    "PortalWishConfirmation": "POST /v1/portal/preferences/confirm — the periods a \"nothing has changed\" answered",
 }
 
 #: Reachable from a plane the SDKs cover, but never actually on that plane's wire. The server
@@ -175,6 +176,8 @@ CONSOLE_PLANE_ONLY = {
     "SaveRosterCycleInput": "console write shape for a planning cycle",
     "RosterCycleRun": "console planning cycle run",
     "RosterCycleEvent": "console planning cycle log entry",
+    "RosterCycleSubmissions": "console planning cycle run; who of the crew has answered the wish window",
+    "RosterCycleRemindResult": "console planning cycle run; the manual wishes reminder",
     "RosterHolidayLocation": "console rostering; a country or region the holiday calendar covers",
     "RosterHoliday": "console rostering; one public holiday the calendar resolved",
     "RosterContractHours": "console rostering; planned against contracted hours, from the engine",

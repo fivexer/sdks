@@ -1251,6 +1251,8 @@ planned:
     - { method: GET, path: "/v1/portal/preferences" }
     - { method: PUT, path: "/v1/portal/preferences" }
     - { method: GET, path: "/v1/portal/preferences/outcome" }
+    # "Nothing has changed" — the worker's answer to a wish window without an edit.
+    - { method: POST, path: "/v1/portal/preferences/confirm" }
     - { method: GET, path: "/v1/supervisor/timeoff" }
     - { method: POST, path: "/v1/supervisor/timeoff/{id}/approve" }
     - { method: POST, path: "/v1/supervisor/timeoff/{id}/deny" }
