@@ -8647,9 +8647,20 @@
     },
     "/v1/portal/metrics/today": {
       "get": {
-        "summary": "The worker's own metrics for today",
+        "summary": "The worker's own metrics for today, or since a given instant",
         "tags": [
           "worker-portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          }
         ],
         "security": [
           {
@@ -9561,6 +9572,42 @@
         }
       }
     },
+    "/v1/portal/preferences/confirm": {
+      "post": {
+        "summary": "Confirm my standing wishes for the periods being planned",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "runId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/portal/preferences/outcome": {
       "get": {
         "summary": "How my schedule wishes went",
@@ -9766,6 +9813,72 @@
         "security": [
           {
             "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/cover/returns": {
+      "get": {
+        "summary": "Your sick calls, and when you are back",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/roster/cover/{id}/return": {
+      "post": {
+        "summary": "Say which day you are back",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "returnDate"
+                ],
+                "properties": {
+                  "returnDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
           }
         ],
         "responses": {
@@ -11088,6 +11201,10 @@
                         "type": "number",
                         "minimum": 1
                       },
+                      "includedWorkers": {
+                        "type": "number",
+                        "minimum": 0
+                      },
                       "maxQueuedTasks": {
                         "type": "number",
                         "minimum": 1
@@ -11331,6 +11448,10 @@
                           "maxWorkers": {
                             "type": "number",
                             "minimum": 1
+                          },
+                          "includedWorkers": {
+                            "type": "number",
+                            "minimum": 0
                           },
                           "maxQueuedTasks": {
                             "type": "number",
