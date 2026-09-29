@@ -182,6 +182,7 @@ CONSOLE_PLANE_ONLY = {
     "RosterCoverPolicy": "console planning cycle; how a sick call is offered in waves and escalated",
     "RosterSwapPolicy": "console planning cycle; when a worker swap needs a manager's yes",
     "RosterTimeOffPolicy": "console planning cycle; when a leave request approves itself",
+    "TimeOffNoteReading": "console time off; what the decisions service read in a leave note",
     "RosterPublishBlockReason": "console planning cycle run; why a rota could not go out on its own",
     "RosterCycleBlock": "console planning cycle run; a blocked run's reasons and diagnosis",
     "RosterPostedOpenShift": "console planning cycle run; an empty seat a publish offered to the team",
