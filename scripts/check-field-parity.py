@@ -179,6 +179,7 @@ CONSOLE_PLANE_ONLY = {
     "RosterCycleSubmissions": "console planning cycle run; who of the crew has answered the wish window",
     "RosterCycleRemindResult": "console planning cycle run; the manual wishes reminder",
     "RosterPublishPolicy": "console planning cycle; when a planned rota may go out on its own",
+    "RosterCoverPolicy": "console planning cycle; how a sick call is offered in waves and escalated",
     "RosterPublishBlockReason": "console planning cycle run; why a rota could not go out on its own",
     "RosterCycleBlock": "console planning cycle run; a blocked run's reasons and diagnosis",
     "RosterPostedOpenShift": "console planning cycle run; an empty seat a publish offered to the team",
