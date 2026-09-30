@@ -243,6 +243,10 @@ CONSOLE_PLANE_ONLY = {
     "OverrideProposal": "console capacity radar; one shift template's proposed demand override",
     "CapacityAcceptEventResult": "console capacity radar; POST /capacity/events/{id}/accept",
     "CapacityPrecision": "console capacity radar; GET /capacity/precision",
+    "CapacityReserve": "console capacity radar; standby answers on GET /capacity/alerts",
+    "CapacityReserveStatus": "console capacity radar; standby answer status",
+    "CapacityStandbyResult": "console capacity radar; POST /capacity/alerts/{id}/standby",
+    "TimeOffCapacityRow": "console rostering; the capacity half of GET /timeoff/{id}/impact",
 }
 
 

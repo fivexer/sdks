@@ -1268,6 +1268,10 @@ planned:
     - { method: GET, path: "/v1/portal/roster/cover/returns" }
     - { method: POST, path: "/v1/portal/roster/cover/{id}/return" }
     - { method: POST, path: "/v1/portal/roster/cover/{id}/back" }
+    # Standby asks — "could you come in if needed?", answered in the portal. Same
+    # reasoning as the rest of cover: the portal has its own client.
+    - { method: GET, path: "/v1/portal/reserves" }
+    - { method: PATCH, path: "/v1/portal/reserves/{id}" }
     - { method: GET, path: "/v1/supervisor/cover" }
     - { method: GET, path: "/v1/supervisor/cover/{coverId}/openings/{openingId}/candidates" }
     - { method: POST, path: "/v1/supervisor/cover/{coverId}/openings/{openingId}/offer" }
