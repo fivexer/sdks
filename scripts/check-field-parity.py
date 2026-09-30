@@ -221,6 +221,28 @@ CONSOLE_PLANE_ONLY = {
     "CreateTimeOffInput": "console write shape for a time-off request",
     "TimeOffQuery": "console filter for time-off requests",
     "TimeOffImpact": "console rostering; what approving a request would cost",
+    # Capacity radar (spec §5-§6): dual-mounted on the console plane only, same
+    # reasoning as the rest of rostering above — the console is the only
+    # authoring surface today, and committing three more SDKs to a shape that
+    # is still settling is the cost this defers.
+    "CapacityAlertTier": "console capacity radar; watch/at-risk/critical severity",
+    "CapacitySkillResilience": "console capacity radar; one skill's shortfall on a judged shift",
+    "RadarActionKind": "console capacity radar; the kind of suggested action",
+    "RadarAction": "console capacity radar; one suggested action to close a shortfall",
+    "CapacityAlertDetails": "console capacity radar; an alert's aggregate detail, never individual identity",
+    "CapacityAlert": "console capacity radar; one alert on a published shift",
+    "CapacityRadarShift": "console capacity radar; one judged shift over the 72h window",
+    "CapacityRadar": "console capacity radar; GET /capacity/radar",
+    "CapacityLaneProjection": "console capacity radar; one routing lane's projected backlog",
+    "CapacityToday": "console capacity radar; GET /capacity/today",
+    "CapacitySettings": "console capacity radar; GET/PUT /capacity/settings",
+    "CapacityEventScope": "console capacity radar; sites/teams/templates an event touches",
+    "CapacityEventEffect": "console capacity radar; a percent, headcount, or closed effect",
+    "CapacityEventInput": "console write shape for a capacity event",
+    "CapacityEvent": "console capacity radar; a known future busy or closed period",
+    "OverrideProposal": "console capacity radar; one shift template's proposed demand override",
+    "CapacityAcceptEventResult": "console capacity radar; POST /capacity/events/{id}/accept",
+    "CapacityPrecision": "console capacity radar; GET /capacity/precision",
 }
 
 
