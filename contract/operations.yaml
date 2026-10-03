@@ -1366,6 +1366,10 @@ planned:
     # and no reference-TS method exposes them either.
     - { method: GET, path: "/v1/worker-auth/devices" }
     - { method: DELETE, path: "/v1/worker-auth/devices/{deviceId}" }
+    # The live-ops overview (stats.liveOverview in the TS SDK). An operator screen's read;
+    # bound in all four once its shape has settled under the console page it serves.
+    - { method: GET, path: "/v1/stats/live" }
+    - { method: GET, path: "/v1/stats/live/lanes/{tag}" }
 
 
 # ─────────────────────────── non-HTTP surface ───────────────────────────

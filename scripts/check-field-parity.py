@@ -103,6 +103,15 @@ AS_ARGUMENTS = {
 #: CONSOLE_PLANE_ONLY — these responses really are sent to a workspace key, and filing them
 #: there would record a false reason for the omission.
 PLANNED = {
+    # The live-ops overview. An operator screen's read, polled by the console; bound in
+    # three SDKs once the shape has lived through a few releases of the page it serves.
+    "LiveOverview": "GET /v1/stats/live — the queue by lane, flow, every worker's state, post cover",
+    "LiveLane": "nested in LiveOverview — one routing tag's share of the queue and who can take it",
+    "LiveWorker": "nested in LiveOverview — one worker's state right now",
+    "LiveSite": "nested in LiveOverview — one site's people and posts",
+    "LivePost": "nested in LiveSite — one post's cover right now",
+    "LiveFlowMinute": "nested in LiveOverview — one minute of arrivals and departures",
+    "LiveLaneTasks": "GET /v1/stats/live/lanes/{tag} — the oldest queued tasks in one lane",
     # Payroll analysis and statutory figures. The wage-figure caution on the rest of the
     # payroll surface applies: bound in three SDKs once the shapes stop moving.
     "PayrollAnalysis": "GET /v1/team/time/payroll/analysis — the ledger grouped",

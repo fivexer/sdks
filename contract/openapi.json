@@ -5379,6 +5379,64 @@
         }
       }
     },
+    "/v1/stats/live": {
+      "get": {
+        "summary": "Live-ops overview: the queue by lane (routing tag), wait distribution, flow in and out over the last hour, every worker's state, and \u2014 when the workspace has sites \u2014 post cover right now",
+        "tags": [
+          "stats"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/stats/live/lanes/{tag}": {
+      "get": {
+        "summary": "One lane (routing tag): its oldest queued tasks, oldest first, and everyone who could take them",
+        "tags": [
+          "stats"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "tag",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/stats/sla": {
       "get": {
         "summary": "SLA attainment counters for tasks carrying an sla policy",
@@ -9951,6 +10009,75 @@
         }
       }
     },
+    "/v1/portal/reserves": {
+      "get": {
+        "summary": "Standby asks waiting on your answer",
+        "tags": [
+          "worker-portal"
+        ],
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/portal/reserves/{id}": {
+      "patch": {
+        "summary": "Answer a standby ask",
+        "tags": [
+          "worker-portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "answer"
+                ],
+                "properties": {
+                  "answer": {
+                    "type": "string",
+                    "enum": [
+                      "yes",
+                      "no"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/portal/roster/cover/offers/{id}/accept": {
       "post": {
         "summary": "Take a cover shift",
@@ -13462,6 +13589,9 @@
                       "roster": {
                         "type": "boolean"
                       },
+                      "capacity": {
+                        "type": "boolean"
+                      },
                       "time": {
                         "type": "boolean"
                       },
@@ -14485,6 +14615,34 @@
     "/console/workspaces/{workspaceId}/worker-identities": {
       "get": {
         "summary": "List worker identities for the portal",
+        "tags": [
+          "console"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/console/workspaces/{workspaceId}/roster/site-owner-candidates": {
+      "get": {
+        "summary": "List the workspace members who can own a site",
         "tags": [
           "console"
         ],
