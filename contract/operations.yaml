@@ -1379,3 +1379,10 @@ helpers:
       description: >-
           Latest X-Quota-* snapshot from any workspace-plane response, success or error. Errors
           raised from 402/429 carry the same snapshot so callers can back off.
+    - name: error.details
+      description: >-
+          Structured facts on an error body (`error.details`) when the API sends them, e.g. 409
+          `time_off_overlap` → `{ overlapping }`, 409 `stale` → `{ current }`, 403 `owned_by_hr` →
+          `{ vendor, editUrl }`. Undefined otherwise. Parsed by the reference TS SDK
+          (`FivexerApiError.details`); the Python, Java and PHP SDKs keep code and message only
+          for now.
