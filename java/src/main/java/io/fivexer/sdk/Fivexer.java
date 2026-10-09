@@ -77,6 +77,8 @@ public class Fivexer implements AutoCloseable {
     private final String baseUrl;
     private final String apiKey;
     private final OkHttpClient httpClient;
+    /** Headroom over a long-poll's hold for the response itself to arrive. */
+    private static final long LONG_POLL_MARGIN_MS = 10_000;
     private final int maxRetries;
     private final Gson gson;
 
@@ -222,6 +224,25 @@ public class Fivexer implements AutoCloseable {
      */
     <T> T request(String method, String path, String body, Map<String, String> query, Class<T> type,
             boolean voidExpected) {
+        return send(httpClient, method, path, body, query, type, voidExpected);
+    }
+
+    /**
+     * A GET the server may hold open for up to {@code holdMs} (a long-poll). OkHttp's default read
+     * timeout is 10 s, so the call gets a client whose read timeout covers the hold plus a margin;
+     * a client already configured with a longer one is used as it is. The derived client shares the
+     * connection pool and dispatcher, so it costs no new connections.
+     */
+    <T> T requestHeld(String path, Map<String, String> query, long holdMs, Class<T> type) {
+        long needed = holdMs + LONG_POLL_MARGIN_MS;
+        OkHttpClient held = httpClient.readTimeoutMillis() == 0 || httpClient.readTimeoutMillis() >= needed
+                ? httpClient
+                : httpClient.newBuilder().readTimeout(java.time.Duration.ofMillis(needed)).build();
+        return send(held, "GET", path, null, query, type, false);
+    }
+
+    private <T> T send(OkHttpClient http, String method, String path, String body, Map<String, String> query,
+            Class<T> type, boolean voidExpected) {
         // Generate the idempotency key ONCE so a retried POST carries the same key and is
         // deduplicated server-side rather than creating a second task.
         String idempotencyKey = "POST".equals(method) ? java.util.UUID.randomUUID().toString() : null;
@@ -232,7 +253,7 @@ public class Fivexer implements AutoCloseable {
             String rawBody;
             QuotaInfo capturedQuota;
             String retryAfter;
-            try (Response response = httpClient.newCall(okRequest).execute()) {
+            try (Response response = http.newCall(okRequest).execute()) {
                 status = response.code();
                 capturedQuota = parseQuota(response.headers().toMultimap());
                 if (capturedQuota.hasAny()) {

@@ -127,6 +127,58 @@ class TaskReferenceInput:
 
 
 @dataclass
+class ResultContract:
+    """What a finished result must look like.
+
+    ``schema`` (JSON Schema 2020-12; no ``pattern``/``patternProperties``, local ``$ref`` only) is
+    enforced at completion: a result that misses it is refused with a 422 ``result_invalid``, unless
+    it reports ``success: False``. The keys ``success``, ``summary`` and ``timedOut`` are set aside
+    before the check. ``acceptance_criteria`` is shown to whoever does the work. Fixed at creation.
+    """
+
+    schema: dict[str, Any] | None = None
+    acceptance_criteria: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return compact({"schema": self.schema, "acceptanceCriteria": self.acceptance_criteria})
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> ResultContract:
+        return cls(schema=data.get("schema"), acceptance_criteria=data.get("acceptanceCriteria"))
+
+
+def _contract_or_none(data: Mapping[str, Any]) -> ResultContract | None:
+    raw = data.get("resultContract")
+    return None if raw is None else ResultContract.from_json(raw)
+
+
+@dataclass
+class TaskOutcome:
+    """``GET /v1/tasks/{id}/outcome`` — where a task stands and, once finished, its result."""
+
+    id: str
+    # queued | pending | accepted | … while live; completed | failed | cancelled | expired once done
+    status: str
+    done: bool
+    # Who holds or held it; None while queued
+    worker_id: str | None = None
+    result: dict[str, Any] | None = None
+    # Epoch ms; None while live
+    terminal_at: int | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> TaskOutcome:
+        return cls(
+            id=data.get("id", ""),
+            status=data.get("status", ""),
+            done=bool(data.get("done", False)),
+            worker_id=data.get("workerId"),
+            result=data.get("result"),
+            terminal_at=data.get("terminalAt"),
+        )
+
+
+@dataclass
 class TaskDataSummary:
     """Counts of the rich data hanging off a task; populated on single-task reads only."""
 
@@ -497,6 +549,8 @@ class CreateTask:
     # An appointment: when the work is performed and for how long. Ahead of it a worker is
     # booked for the task; see ``tasks.booking``
     slot: TimeSlot | None = None
+    # What a finished result must look like; a completion that misses the schema is refused
+    result_contract: ResultContract | None = None
 
     def to_json(self) -> dict[str, Any]:
         payload = compact(
@@ -523,6 +577,7 @@ class CreateTask:
                 "teamId": self.team_id,
                 "preferTeamId": self.prefer_team_id,
                 "slot": None if self.slot is None else self.slot.to_json(),
+                "resultContract": None if self.result_contract is None else self.result_contract.to_json(),
             }
         )
         # escalation and sla are nullable on the wire in a way the others are not: an explicit
@@ -893,6 +948,8 @@ class TaskContext:
     description: str | None = None
     context: dict[str, Any] | None = None
     references: list[TaskReference] = field(default_factory=list)
+    # The requester's definition of done, fixed at creation; None when the task has none
+    result_contract: ResultContract | None = None
     created_at: int | None = None
     updated_at: int | None = None
 
@@ -904,6 +961,7 @@ class TaskContext:
             description=data.get("description"),
             context=data.get("context"),
             references=_each(data, "references", TaskReference.from_json),
+            result_contract=_contract_or_none(data),
             created_at=data.get("createdAt"),
             updated_at=data.get("updatedAt"),
         )
@@ -2715,6 +2773,8 @@ class WorkerTaskDetail:
     description: str | None = None
     context: dict[str, Any] | None = None
     references: list[TaskReference] | None = None
+    # The requester's definition of done; a completion that misses its schema is refused
+    result_contract: ResultContract | None = None
     created_at: int | None = None
 
     @classmethod
@@ -2728,6 +2788,7 @@ class WorkerTaskDetail:
             description=data.get("description"),
             context=data.get("context"),
             references=_each_or_none(data, "references", TaskReference.from_json),
+            result_contract=_contract_or_none(data),
             created_at=data.get("createdAt"),
         )
 

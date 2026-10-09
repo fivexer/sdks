@@ -15,6 +15,7 @@ public class TaskContext {
     private String description;
     private Map<String, Object> context;
     private List<TaskReference> references;
+    private ResultContract resultContract;
     private Long createdAt;
     private Long updatedAt;
 
@@ -23,6 +24,8 @@ public class TaskContext {
     public String getDescription() { return description; }
     public Map<String, Object> getContext() { return context; }
     public List<TaskReference> getReferences() { return references; }
+    /** The requester's definition of done, fixed at creation; null when the task has none. */
+    public ResultContract getResultContract() { return resultContract; }
     public Long getCreatedAt() { return createdAt; }
     public Long getUpdatedAt() { return updatedAt; }
 }

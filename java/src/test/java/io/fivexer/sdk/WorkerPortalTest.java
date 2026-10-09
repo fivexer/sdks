@@ -176,9 +176,11 @@ class WorkerPortalTest extends MockServerBase {
                 + "\"priority\":90,\"title\":\"Refund request\",\"description\":\"Order 41\","
                 + "\"context\":{\"orderId\":\"41\"},"
                 + "\"references\":[{\"id\":\"ref_1\",\"url\":\"https://crm/o/41\",\"label\":\"Order 41\"}],"
+                + "\"resultContract\":{\"acceptanceCriteria\":\"Refund issued\"},"
                 + "\"createdAt\":1750000000000}");
 
         WorkerTaskDetail detail = worker().taskDetail("task_8fk2");
+        assertEquals("Refund issued", detail.getResultContract().getAcceptanceCriteria());
 
         assertEquals("task_8fk2", detail.getId());
         assertEquals("pending", detail.getStatus());

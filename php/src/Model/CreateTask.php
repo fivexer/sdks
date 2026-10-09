@@ -56,6 +56,8 @@ final class CreateTask
         private ?string $preferTeamId = null,
         /** A fixed appointment. Combinable with $schedule, exclusive with $recurrence */
         private ?TimeSlot $slot = null,
+        /** What a finished result must look like; a completion that misses the schema is refused */
+        private ?ResultContract $resultContract = null,
     ) {
         if ($tags === []) {
             throw new \InvalidArgumentException('tags must not be empty');
@@ -245,6 +247,16 @@ final class CreateTask
     }
 
     /**
+     * What a finished result must look like. A completion whose result misses the schema is
+     * refused, unless it reports failure. Fixed at creation.
+     */
+    public function resultContract(ResultContract $resultContract): self
+    {
+        $this->resultContract = $resultContract;
+        return $this;
+    }
+
+    /**
      * Serializes only the set fields (omits nulls) so the request body matches the contract.
      *
      * The two nullable policies are the exception to that rule: an *absent* escalation or SLA
@@ -280,6 +292,7 @@ final class CreateTask
             'slot' => $this->slot?->toArray(),
             'teamId' => $this->teamId,
             'preferTeamId' => $this->preferTeamId,
+            'resultContract' => $this->resultContract?->toArray(),
         ]);
 
         if ($this->escalationNull) {

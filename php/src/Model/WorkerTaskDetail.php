@@ -26,6 +26,8 @@ final class WorkerTaskDetail
         /** @var list<TaskReference>|null */
         public readonly ?array $references,
         public readonly ?int $createdAt,
+        /** The requester's definition of done; a completion that misses its schema is refused */
+        public readonly ?ResultContract $resultContract = null,
     ) {
     }
 
@@ -45,6 +47,7 @@ final class WorkerTaskDetail
             context: $data['context'] ?? null,
             references: Json::parseEachOrNull($data, 'references', [TaskReference::class, 'fromArray']),
             createdAt: isset($data['createdAt']) ? (int) $data['createdAt'] : null,
+            resultContract: ResultContract::fromParent($data),
         );
     }
 }

@@ -18,6 +18,7 @@ public class WorkerTaskDetail {
     private String description;
     private Map<String, Object> context;
     private List<TaskReference> references;
+    private ResultContract resultContract;
     private Long createdAt;
 
     public String getId() { return id; }
@@ -28,5 +29,7 @@ public class WorkerTaskDetail {
     public String getDescription() { return description; }
     public Map<String, Object> getContext() { return context; }
     public List<TaskReference> getReferences() { return references; }
+    /** The requester's definition of done; a completion that misses its schema is refused. */
+    public ResultContract getResultContract() { return resultContract; }
     public Long getCreatedAt() { return createdAt; }
 }

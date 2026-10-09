@@ -64,6 +64,8 @@ use Psr\Http\Message\ResponseInterface;
 final class Fivexer
 {
     private const DEFAULT_TIMEOUT_SECONDS = 30.0;
+    /** Headroom over a long-poll's hold for the response itself to arrive. */
+    private const LONG_POLL_MARGIN_SECONDS = 10.0;
 
     private readonly string $baseUrl;
     private readonly string $apiKey;
@@ -274,6 +276,7 @@ final class Fivexer
      * @param string $path Path under /v1, e.g. '/tasks'
      * @param array<string, mixed>|null $body JSON body to send, or null for none
      * @param array<string, string|int|null> $query Query parameters (null values skipped)
+     * @param int|null $holdMs For a long-poll: how long the server may hold the response, in ms
      * @return array<string, mixed>|null Decoded JSON body, or null for 204 responses
      *
      * @throws FivexerApiException on non-2xx responses
@@ -284,9 +287,14 @@ final class Fivexer
         string $path,
         ?array $body = null,
         array $query = [],
+        ?int $holdMs = null,
     ): ?array {
         $url = $this->baseUrl . '/v1' . $path;
         $options = $this->buildOptions($method, $body, $query);
+        $held = $this->heldTimeout($holdMs);
+        if ($held !== null) {
+            $options[RequestOptions::TIMEOUT] = $held;
+        }
 
         $attempt = 0;
         while (true) {
@@ -340,6 +348,23 @@ final class Fivexer
      * @param array<string, string|int|null> $query
      * @return array<string, mixed>
      */
+    /**
+     * A timeout that outlasts a long-poll, or null to keep the client's own. The server may hold
+     * the response for the whole wait; a client configured with a shorter timeout would give up
+     * first. A client already patient enough (or unlimited, 0) is left as it is.
+     */
+    private function heldTimeout(?int $holdMs): ?float
+    {
+        if ($holdMs === null) {
+            return null;
+        }
+        $needed = $holdMs / 1000 + self::LONG_POLL_MARGIN_SECONDS;
+        $current = $this->httpClient instanceof Client
+            ? (float) ($this->httpClient->getConfig('timeout') ?? 0)
+            : self::DEFAULT_TIMEOUT_SECONDS;
+        return $current === 0.0 || $current >= $needed ? null : $needed;
+    }
+
     private function buildOptions(string $method, ?array $body, array $query): array
     {
         $headers = [

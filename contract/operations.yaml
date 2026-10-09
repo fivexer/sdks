@@ -60,6 +60,12 @@ groups:
             method: GET
             path: /tasks/{id}
             response: Task
+          - name: tasks.outcome
+            method: GET
+            path: /tasks/{id}/outcome
+            query: "waitMs?"
+            response: TaskOutcome
+            notes: Long-poll — returns once the task is done or waitMs (≤ 25000) runs out.
           - name: tasks.list
             method: GET
             path: /tasks

@@ -5,6 +5,7 @@ import io.fivexer.sdk.model.BulkTaskReport;
 import io.fivexer.sdk.model.TaskCheckReport;
 import io.fivexer.sdk.model.TaskEscalation;
 import io.fivexer.sdk.model.TaskList;
+import io.fivexer.sdk.model.TaskOutcome;
 import io.fivexer.sdk.model.UnparkTask;
 import io.fivexer.sdk.model.AssignTaskResult;
 import io.fivexer.sdk.model.CreateTask;
@@ -64,6 +65,23 @@ public final class Tasks {
 
     public Task get(String taskId) {
         return client.request("GET", "/tasks/" + Json.enc(taskId), null, null, Task.class, false);
+    }
+
+    /** Where a task stands and, once finished, its result — without waiting. */
+    public TaskOutcome outcome(String taskId) {
+        return client.request("GET", "/tasks/" + Json.enc(taskId) + "/outcome", null, null, TaskOutcome.class, false);
+    }
+
+    /**
+     * Where a task stands and, once finished, its result. Long-polls: returns as soon as the task
+     * is done or {@code waitMs} (at most 25000) runs out, whichever is first.
+     */
+    public TaskOutcome outcome(String taskId, long waitMs) {
+        return client.requestHeld(
+                "/tasks/" + Json.enc(taskId) + "/outcome",
+                Json.query("waitMs", String.valueOf(waitMs)),
+                waitMs,
+                TaskOutcome.class);
     }
 
     public TaskPage list(ListTasksQuery query) {

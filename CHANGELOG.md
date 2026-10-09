@@ -5,6 +5,20 @@ language. The `/v1` API contract version each release targets is noted when rele
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — handing work off: result contracts and the outcome read
+
+Targets `/v1` as of 2026-10-09. In Python, Java and PHP, matching the reference TypeScript SDK.
+
+### Added
+- **`tasks.outcome`** (`GET /tasks/{id}/outcome`): where a task stands and, once finished, its
+  result — `done`, `status`, `workerId`, `result`, `terminalAt`. Pass a wait (≤ 25000 ms) to
+  long-poll until the task finishes. The call's read timeout is raised to cover the wait when the
+  client's own is shorter (OkHttp defaults to 10 s), so a long-poll is never cut off client-side.
+- **Result contracts**: `CreateTask.resultContract` (`ResultContract`: a JSON Schema and/or plain
+  acceptance criteria), read back on `TaskContext` and the worker portal's `WorkerTaskDetail`.
+  A completion whose result misses the schema is refused with a 422 `result_invalid`, unless it
+  reports `success: false`.
+
 ## [python-0.8.0] / [java-0.6.0] — editing live tasks, slots, working-time corrections, links
 
 Targets `/v1` as of 2026-09-26. Python `0.8.0`, Java `0.6.0`, PHP `dev-main`. Every operation

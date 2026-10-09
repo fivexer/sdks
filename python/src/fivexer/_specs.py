@@ -76,6 +76,8 @@ class RequestSpec:
     path: str
     body: Any = None
     query: dict[str, str] | None = None
+    # A long-poll: the server may hold the response this many ms, so the read timeout must cover it
+    hold_ms: int | None = None
 
 
 def enc(value: str) -> str:
@@ -106,6 +108,15 @@ def tasks_create(task: CreateTask) -> RequestSpec:
 
 def tasks_get(task_id: str) -> RequestSpec:
     return RequestSpec("GET", f"/tasks/{enc(task_id)}")
+
+
+def tasks_outcome(task_id: str, wait_ms: int | None) -> RequestSpec:
+    return RequestSpec(
+        "GET",
+        f"/tasks/{enc(task_id)}/outcome",
+        query=None if wait_ms is None else {"waitMs": str(wait_ms)},
+        hold_ms=wait_ms,
+    )
 
 
 def tasks_list(query: ListTasksQuery | None) -> RequestSpec:

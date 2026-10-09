@@ -85,6 +85,7 @@ from .models import (
     TaskHistoryPage,
     TaskHistoryQuery,
     TaskList,
+    TaskOutcome,
     TaskPage,
     TaskPriority,
     Team,
@@ -201,6 +202,25 @@ def _size_of(payload: bytes | bytearray | memoryview) -> int:
     return len(bytes(payload))
 
 
+#: Headroom over a long-poll's hold for the response itself to arrive.
+_LONG_POLL_MARGIN_S = 10.0
+
+
+def _held_timeout(current: httpx.Timeout, hold_ms: int | None) -> httpx.Timeout | None:
+    """A read timeout that outlasts a long-poll, or ``None`` to keep the client's own.
+
+    The server may hold an outcome read for the whole wait; a client configured with a shorter
+    read timeout would give up first. A client already patient enough (or with no read limit)
+    is left as it is.
+    """
+    if hold_ms is None:
+        return None
+    needed = hold_ms / 1000 + _LONG_POLL_MARGIN_S
+    if current.read is None or current.read >= needed:
+        return None
+    return httpx.Timeout(connect=current.connect, read=needed, write=current.write, pool=current.pool)
+
+
 class Fivexer:
     """Synchronous typed client for the Fivexer Platform ``/v1`` API.
 
@@ -281,7 +301,14 @@ class Fivexer:
 
     # -- core transport --
     def _send(self, spec: RequestSpec, *, idempotency_key: str | None = None) -> Any:
-        return self._request(spec.method, spec.path, body=spec.body, params=spec.query, idempotency_key=idempotency_key)
+        return self._request(
+            spec.method,
+            spec.path,
+            body=spec.body,
+            params=spec.query,
+            idempotency_key=idempotency_key,
+            timeout=_held_timeout(self._client.timeout, spec.hold_ms),
+        )
 
     def _request(
         self,
@@ -291,6 +318,7 @@ class Fivexer:
         body: Any = None,
         params: Mapping[str, Any] | None = None,
         idempotency_key: str | None = None,
+        timeout: httpx.Timeout | None = None,
     ) -> Any:
         url = f"{self._base}/v1{path}"
         attempt = 0
@@ -309,6 +337,7 @@ class Fivexer:
                 headers=headers,
                 json=body if body is not None else None,
                 params=query,
+                timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
             )
 
             quota = QuotaInfo.from_headers(dict(response.headers))
@@ -409,7 +438,12 @@ class AsyncFivexer:
 
     async def _send(self, spec: RequestSpec, *, idempotency_key: str | None = None) -> Any:
         return await self._request(
-            spec.method, spec.path, body=spec.body, params=spec.query, idempotency_key=idempotency_key
+            spec.method,
+            spec.path,
+            body=spec.body,
+            params=spec.query,
+            idempotency_key=idempotency_key,
+            timeout=_held_timeout(self._client.timeout, spec.hold_ms),
         )
 
     async def _request(
@@ -420,6 +454,7 @@ class AsyncFivexer:
         body: Any = None,
         params: Mapping[str, Any] | None = None,
         idempotency_key: str | None = None,
+        timeout: httpx.Timeout | None = None,
     ) -> Any:
         url = f"{self._base}/v1{path}"
         attempt = 0
@@ -436,6 +471,7 @@ class AsyncFivexer:
                 headers=headers,
                 json=body if body is not None else None,
                 params=query,
+                timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
             )
 
             quota = QuotaInfo.from_headers(dict(response.headers))
@@ -520,6 +556,11 @@ class _Tasks:
 
     def get(self, task_id: str) -> Task:
         return Task.from_json(self._c._send(specs.tasks_get(task_id)))
+
+    def outcome(self, task_id: str, wait_ms: int | None = None) -> TaskOutcome:
+        """Where a task stands and, once finished, its result. Pass ``wait_ms`` (≤ 25000) to
+        long-poll: the call returns as soon as the task is done or the wait runs out."""
+        return TaskOutcome.from_json(self._c._send(specs.tasks_outcome(task_id, wait_ms)))
 
     def list(self, query: ListTasksQuery | None = None) -> TaskPage:
         return TaskPage.from_json(self._c._send(specs.tasks_list(query)))
@@ -1148,6 +1189,10 @@ class _AsyncTasks:
 
     async def get(self, task_id: str) -> Task:
         return Task.from_json(await self._c._send(specs.tasks_get(task_id)))
+
+    async def outcome(self, task_id: str, wait_ms: int | None = None) -> TaskOutcome:
+        """Where a task stands and, once finished, its result; ``wait_ms`` (≤ 25000) long-polls."""
+        return TaskOutcome.from_json(await self._c._send(specs.tasks_outcome(task_id, wait_ms)))
 
     async def list(self, query: ListTasksQuery | None = None) -> TaskPage:
         return TaskPage.from_json(await self._c._send(specs.tasks_list(query)))

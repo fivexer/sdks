@@ -23,6 +23,8 @@ final class TaskContext
         public readonly array $references,
         public readonly ?int $createdAt,
         public readonly ?int $updatedAt,
+        /** The requester's definition of done, fixed at creation; null when the task has none */
+        public readonly ?ResultContract $resultContract = null,
     ) {
     }
 
@@ -40,6 +42,7 @@ final class TaskContext
             references: Json::parseEach($data, 'references', [TaskReference::class, 'fromArray']),
             createdAt: isset($data['createdAt']) ? (int) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (int) $data['updatedAt'] : null,
+            resultContract: ResultContract::fromParent($data),
         );
     }
 }

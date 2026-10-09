@@ -14,6 +14,7 @@ use Fivexer\SDK\Model\TaskCheckReport;
 use Fivexer\SDK\Model\TaskEscalation;
 use Fivexer\SDK\Model\TaskHistoryPage;
 use Fivexer\SDK\Model\TaskHistoryQuery;
+use Fivexer\SDK\Model\TaskOutcome;
 use Fivexer\SDK\Model\TaskList;
 use Fivexer\SDK\Model\UnparkTask;
 use Fivexer\SDK\Model\SuggestWorkers;
@@ -90,6 +91,21 @@ final class Tasks
     public function get(string $taskId): Task
     {
         return Task::fromArray($this->client->request('GET', '/tasks/' . \rawurlencode($taskId)) ?? []);
+    }
+
+    /**
+     * Where a task stands and, once finished, its result. Pass $waitMs (≤ 25000) to long-poll:
+     * the call returns as soon as the task is done or the wait runs out, whichever is first.
+     */
+    public function outcome(string $taskId, ?int $waitMs = null): TaskOutcome
+    {
+        return TaskOutcome::fromArray($this->client->request(
+            'GET',
+            '/tasks/' . \rawurlencode($taskId) . '/outcome',
+            null,
+            $waitMs === null ? [] : ['waitMs' => (string) $waitMs],
+            $waitMs,
+        ) ?? []);
     }
 
     /**

@@ -45,6 +45,7 @@ public class CreateTask {
     private TimeSlot slot;
     private String teamId;
     private String preferTeamId;
+    private ResultContract resultContract;
     // Not serialised by Gson: these record the *request* for an explicit null, which toJson()
     // writes onto the tree. A `transient` field is invisible to Gson, which is exactly right —
     // the marker is SDK bookkeeping, never a wire field of its own.
@@ -81,6 +82,7 @@ public class CreateTask {
     public TimeSlot getSlot() { return slot; }
     public String getTeamId() { return teamId; }
     public String getPreferTeamId() { return preferTeamId; }
+    public ResultContract getResultContract() { return resultContract; }
 
     public CreateTask id(String id) { this.id = id; return this; }
     public CreateTask priority(double priority) { this.priority = priority; return this; }
@@ -136,6 +138,15 @@ public class CreateTask {
 
     /** Soft team preference: members rank first, everyone else stays eligible. */
     public CreateTask preferTeamId(String preferTeamId) { this.preferTeamId = preferTeamId; return this; }
+
+    /**
+     * What a finished result must look like. A completion whose result misses the schema is
+     * refused, unless it reports failure. Fixed at creation.
+     */
+    public CreateTask resultContract(ResultContract resultContract) {
+        this.resultContract = resultContract;
+        return this;
+    }
 
     /**
      * Serialises only the fields that were set, so the body matches the contract.
