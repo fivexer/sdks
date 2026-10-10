@@ -113,6 +113,8 @@ PLANNED = {
     "RunEvent": "nested in RunEventsPage — one recorded step of a run",
     "RunEventsPage": "GET /v1/runs/{id}/events — a run's record after a seq, optionally long-polled",
     "StartAgentRunInput": "POST /v1/runs — the goal, its key and its inputs",
+    "SaveRunAsWorkflowResult": "POST /v1/runs/{id}/workflow — the workflow a run became, and its gaps",
+    "WorkflowCompileGap": "nested in SaveRunAsWorkflowResult — what a run's record cannot vouch for",
     # Leave and absences read by operators. Same caution as the payroll surface below: wage-adjacent
     # shapes, bound in three SDKs once they stop moving.
     "AbsenceItem": "nested in WorkerAbsencesPage — one absence, synced or local",
