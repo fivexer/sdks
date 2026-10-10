@@ -31,6 +31,7 @@ public class WorkerTimeEntry {
     private String reason;
     private String description;
     private String taskId;
+    private java.util.List<RoleStretch> roles;
 
     /**
      * The row's own id — what a correction addresses. A wrong figure is disputed by row, never
@@ -77,4 +78,7 @@ public class WorkerTimeEntry {
 
     /** Shifts only: the task the time was spent on, or null. */
     public String getTaskId() { return taskId; }
+
+    /** Shifts: the roles it was spent in, in order. Null for a shift nobody named a role for. */
+    public java.util.List<RoleStretch> getRoles() { return roles; }
 }

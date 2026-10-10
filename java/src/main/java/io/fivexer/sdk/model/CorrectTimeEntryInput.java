@@ -21,6 +21,7 @@ public class CorrectTimeEntryInput {
     private List<TimeEntryBreak> breaks;
     private String description;
     private String taskId;
+    private List<RoleStretchInput> roles;
 
     private transient boolean reopen;
     private transient boolean clearDescription;
@@ -41,6 +42,7 @@ public class CorrectTimeEntryInput {
     public List<TimeEntryBreak> getBreaks() { return breaks; }
     public String getDescription() { return description; }
     public String getTaskId() { return taskId; }
+    public List<RoleStretchInput> getRoles() { return roles; }
 
     /** ISO-8601. */
     public CorrectTimeEntryInput startedAt(String startedAt) { this.startedAt = startedAt; return this; }
@@ -84,6 +86,9 @@ public class CorrectTimeEntryInput {
     /** Send {@code "taskId": null}. */
     public CorrectTimeEntryInput clearTaskId() { this.taskId = null; this.clearTaskId = true; return this; }
 
+    /** The roles the shift was worked in, each a stretch of it. Each id must be a role on the rate card. */
+    public CorrectTimeEntryInput roles(List<RoleStretchInput> roles) { this.roles = roles; return this; }
+
     /** Serialise the set fields, then write the requested clears as explicit nulls. */
     public String toJson() {
         JsonObject o = Json.tree(this).getAsJsonObject();
@@ -91,6 +96,7 @@ public class CorrectTimeEntryInput {
         if (clearDescription) o.add("description", JsonNull.INSTANCE);
         if (clearTaskId) o.add("taskId", JsonNull.INSTANCE);
         TimeEntryBreak.applyExplicitNulls(breaks, o);
+        RoleStretchInput.applyExplicitNulls(roles, o);
         return o.toString();
     }
 }

@@ -15,6 +15,7 @@ public class CreateTimeEntryInput {
     private List<TimeEntryBreak> breaks;
     private String description;
     private String taskId;
+    private List<RoleStretchInput> roles;
 
     /**
      * @param startedAt ISO-8601
@@ -36,6 +37,7 @@ public class CreateTimeEntryInput {
     public List<TimeEntryBreak> getBreaks() { return breaks; }
     public String getDescription() { return description; }
     public String getTaskId() { return taskId; }
+    public List<RoleStretchInput> getRoles() { return roles; }
 
     /**
      * Breaks taken inside the shift, each with both ends. Needs a worker with a portal login —
@@ -49,10 +51,14 @@ public class CreateTimeEntryInput {
     /** The task the time was spent on. */
     public CreateTimeEntryInput taskId(String taskId) { this.taskId = taskId; return this; }
 
+    /** The roles the shift was worked in, each a stretch of it. Each id must be a role on the rate card. */
+    public CreateTimeEntryInput roles(List<RoleStretchInput> roles) { this.roles = roles; return this; }
+
     /** Serialise for the wire, omitting unset fields. */
     public String toJson() {
         JsonObject o = Json.tree(this).getAsJsonObject();
         TimeEntryBreak.applyExplicitNulls(breaks, o);
+        RoleStretchInput.applyExplicitNulls(roles, o);
         return o.toString();
     }
 }

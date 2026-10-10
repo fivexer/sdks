@@ -2794,10 +2794,33 @@ class WorkerTaskDetail:
 
 
 @dataclass
+class BreakCoverageWarning:
+    """A shift a break would leave short — advisory: the break is still allowed."""
+
+    shift_instance_id: str
+    shift_name: str
+    remaining: int
+    required: int
+    kind: str  # 'headcount' | 'qualification'
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> BreakCoverageWarning:
+        return cls(
+            shift_instance_id=data.get("shiftInstanceId", ""),
+            shift_name=data.get("shiftName", ""),
+            remaining=int(data.get("remaining", 0)),
+            required=int(data.get("required", 0)),
+            kind=data.get("kind", "headcount"),
+        )
+
+
+@dataclass
 class WorkerBreakStarted:
     worker_id: str
     since: str
     on_break: bool = True
+    #: Shifts this break leaves short. Advisory — the break was taken.
+    coverage_warnings: list[BreakCoverageWarning] = field(default_factory=list)
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerBreakStarted:
@@ -2805,6 +2828,7 @@ class WorkerBreakStarted:
             worker_id=data.get("workerId", ""),
             since=data.get("since", ""),
             on_break=bool(data.get("onBreak", True)),
+            coverage_warnings=_each(data, "coverageWarnings", BreakCoverageWarning.from_json),
         )
 
 
@@ -3103,6 +3127,12 @@ class WorkerMe:
     server simply sends everything.
     """
     push_categories: dict[str, bool] = field(default_factory=dict)
+    #: Shifts the worker's running break leaves short (advisory).
+    break_coverage_warnings: list[BreakCoverageWarning] = field(default_factory=list)
+    #: The worker's profile photo, origin-relative; None when they have none.
+    photo_url: str | None = None
+    #: Whether this deployment can store a photo at all.
+    photo_uploads: bool = False
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerMe:
@@ -3118,6 +3148,9 @@ class WorkerMe:
             locale=data.get("locale"),
             email_notices=bool(data.get("emailNotices", True)),
             push_categories={str(key): bool(value) for key, value in (data.get("pushCategories") or {}).items()},
+            break_coverage_warnings=_each(data, "breakCoverageWarnings", BreakCoverageWarning.from_json),
+            photo_url=data.get("photoUrl"),
+            photo_uploads=bool(data.get("photoUploads", False)),
         )
 
 
@@ -3302,6 +3335,39 @@ class WorkerMetrics:
 
 
 @dataclass
+class RoleStretchInput:
+    """A stretch of a shift worked in one role. ``position_id`` None is no particular role."""
+
+    position_id: str | None
+    started_at: str
+    #: None only for the stretch still being worked on a running shift.
+    ended_at: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {"positionId": self.position_id, "startedAt": self.started_at, "endedAt": self.ended_at}
+
+
+@dataclass
+class RoleStretch:
+    """A stretch of a recorded shift spent in one role, with the role's name."""
+
+    position_id: str | None
+    started_at: str
+    ended_at: str | None = None
+    #: The role's name on the rate card; None for time in no particular role.
+    label: str | None = None
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> RoleStretch:
+        return cls(
+            position_id=data.get("positionId"),
+            started_at=data.get("startedAt", ""),
+            ended_at=data.get("endedAt"),
+            label=data.get("label"),
+        )
+
+
+@dataclass
 class WorkerTimeEntry:
     """One recorded stretch of a worker's time — a shift, or a break inside one.
 
@@ -3337,6 +3403,8 @@ class WorkerTimeEntry:
     #: Shifts only: the work note and the task the time was spent on.
     description: str | None = None
     task_id: str | None = None
+    #: Shifts: the roles it was spent in, in order. None for a shift nobody named a role for.
+    roles: list[RoleStretch] | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerTimeEntry:
@@ -3356,6 +3424,7 @@ class WorkerTimeEntry:
             reason=data.get("reason"),
             description=data.get("description"),
             task_id=data.get("taskId"),
+            roles=_each_or_none(data, "roles", RoleStretch.from_json),
         )
 
 
@@ -3448,6 +3517,8 @@ class CorrectTimeEntryInput:
     # Shifts only: the work note and task, saved with the rest of the change
     description: str | None = None
     task_id: str | None = None
+    # Shifts only: the roles it was worked in, replacing what is recorded, saved atomically with the rest
+    roles: list[RoleStretchInput] | None = None
 
     def to_json(self) -> dict[str, Any]:
         payload = compact(
@@ -3458,6 +3529,7 @@ class CorrectTimeEntryInput:
                 "breaks": None if self.breaks is None else [b.to_json() for b in self.breaks],
                 "description": self.description,
                 "taskId": self.task_id,
+                "roles": None if self.roles is None else [r.to_json() for r in self.roles],
             }
         )
         for key, value in list(payload.items()):
@@ -3479,6 +3551,8 @@ class CreateTimeEntryInput:
     breaks: list[TimeEntryBreakInput] | None = None
     description: str | None = None
     task_id: str | None = None
+    # The roles it was worked in. Each id must be a role on the rate card
+    roles: list[RoleStretchInput] | None = None
 
     def to_json(self) -> dict[str, Any]:
         payload = compact(
@@ -3486,6 +3560,7 @@ class CreateTimeEntryInput:
                 "breaks": None if self.breaks is None else [b.to_json() for b in self.breaks],
                 "description": self.description,
                 "taskId": self.task_id,
+                "roles": None if self.roles is None else [r.to_json() for r in self.roles],
             }
         )
         payload["startedAt"] = self.started_at
@@ -3635,6 +3710,21 @@ class OffboardingRoster:
 
 
 @dataclass
+class LeavePayout:
+    """Leave settled when a worker leaves."""
+
+    paid_out_minutes: int = 0
+    recovered_minutes: int = 0
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> LeavePayout:
+        return cls(
+            paid_out_minutes=int(data.get("paidOutMinutes", 0)),
+            recovered_minutes=int(data.get("recoveredMinutes", 0)),
+        )
+
+
+@dataclass
 class WorkerOffboardingSummary:
     """What removing a worker would hand back and free. Read-only — show it before
     ``workers.remove``."""
@@ -3650,6 +3740,12 @@ class WorkerOffboardingSummary:
     pending_time_off: int = 0
     leave_policies: int = 0
     teams: int = 0
+    #: Leave settled on the way out: minutes paid out, and minutes recovered (taken beyond what was earned).
+    leave_payout: LeavePayout | None = None
+    #: Approved leave after the last day, cancelled by the removal.
+    future_leave: int = 0
+    #: Set when leave could not be settled; the worker was still removed.
+    leave_settlement_error: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerOffboardingSummary:
@@ -3664,6 +3760,9 @@ class WorkerOffboardingSummary:
             pending_time_off=int(data.get("pendingTimeOff", 0)),
             leave_policies=int(data.get("leavePolicies", 0)),
             teams=int(data.get("teams", 0)),
+            leave_payout=LeavePayout.from_json(data["leavePayout"]) if data.get("leavePayout") else None,
+            future_leave=int(data.get("futureLeave", 0)),
+            leave_settlement_error=data.get("leaveSettlementError"),
         )
 
 
@@ -4178,6 +4277,8 @@ class PublicWorkerIdentity:
     activated_at: str | None = None
     created_at: str = ""
     revoked_at: str | None = None
+    #: Their profile photo, origin-relative; None when they have none.
+    photo_url: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> PublicWorkerIdentity:
@@ -4191,6 +4292,7 @@ class PublicWorkerIdentity:
             activated_at=data.get("activatedAt"),
             created_at=data.get("createdAt", ""),
             revoked_at=data.get("revokedAt"),
+            photo_url=data.get("photoUrl"),
         )
 
 

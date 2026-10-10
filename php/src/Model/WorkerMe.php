@@ -32,6 +32,16 @@ final class WorkerMe
          * @var array<string, bool>
          */
         public readonly array $pushCategories = [],
+        /**
+         * Shifts the worker's running break leaves short (advisory).
+         *
+         * @var list<BreakCoverageWarning>
+         */
+        public readonly array $breakCoverageWarnings = [],
+        /** Their profile photo, origin-relative; null when they have none. */
+        public readonly ?string $photoUrl = null,
+        /** Whether this deployment can store a photo at all. */
+        public readonly bool $photoUploads = false,
     ) {
     }
 
@@ -56,6 +66,9 @@ final class WorkerMe
                 static fn (mixed $wanted): bool => (bool) $wanted,
                 is_array($data['pushCategories'] ?? null) ? $data['pushCategories'] : [],
             ),
+            breakCoverageWarnings: Json::parseEach($data, 'breakCoverageWarnings', [BreakCoverageWarning::class, 'fromArray']),
+            photoUrl: isset($data['photoUrl']) ? (string) $data['photoUrl'] : null,
+            photoUploads: (bool) ($data['photoUploads'] ?? false),
         );
     }
 }

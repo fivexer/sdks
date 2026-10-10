@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Fivexer\SDK\Model;
 
+use Fivexer\SDK\Internal\Json;
+
 /**
  * One recorded stretch of a worker's time — a shift, or a break taken inside one.
  *
@@ -53,6 +55,12 @@ final class WorkerTimeEntry
         public readonly ?string $description = null,
         /** The task this time was spent on */
         public readonly ?string $taskId = null,
+        /**
+         * Shifts: the roles it was spent in, in order. Null for a shift nobody named a role for.
+         *
+         * @var list<RoleStretch>|null
+         */
+        public readonly ?array $roles = null,
     ) {
     }
 
@@ -78,6 +86,9 @@ final class WorkerTimeEntry
             reason: isset($data['reason']) ? (string) $data['reason'] : null,
             description: isset($data['description']) ? (string) $data['description'] : null,
             taskId: isset($data['taskId']) ? (string) $data['taskId'] : null,
+            roles: isset($data['roles']) && \is_array($data['roles'])
+                ? Json::parseEach($data, 'roles', [RoleStretch::class, 'fromArray'])
+                : null,
         );
     }
 }

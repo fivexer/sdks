@@ -26,6 +26,8 @@ final class CreateTimeEntryInput
         private ?array $breaks = null,
         private ?string $description = null,
         private ?string $taskId = null,
+        /** @var list<RoleStretchInput>|null */
+        private ?array $roles = null,
     ) {
     }
 
@@ -45,6 +47,18 @@ final class CreateTimeEntryInput
     public function description(string $description): self
     {
         $this->description = $description;
+        return $this;
+    }
+
+    /**
+     * The roles the shift was worked in, each a stretch of it. Each id must be a role on the
+     * rate card.
+     *
+     * @param list<RoleStretchInput> $roles
+     */
+    public function roles(array $roles): self
+    {
+        $this->roles = $roles;
         return $this;
     }
 
@@ -70,6 +84,7 @@ final class CreateTimeEntryInput
             'breaks' => Json::each($this->breaks),
             'description' => $this->description,
             'taskId' => $this->taskId,
+            'roles' => Json::each($this->roles),
         ]);
     }
 }

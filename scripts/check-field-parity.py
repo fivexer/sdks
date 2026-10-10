@@ -103,6 +103,24 @@ AS_ARGUMENTS = {
 #: CONSOLE_PLANE_ONLY — these responses really are sent to a workspace key, and filing them
 #: there would record a false reason for the omission.
 PLANNED = {
+    # Agent runs (platform doc 86, 2026-10-10). The TypeScript SDK and the MCP run tools carry
+    # them first; bound in Python, Java and PHP once the ledger shape has settled with the
+    # canvas and save-as-workflow plans that read it.
+    "AgentRun": "GET/POST /v1/runs — a goal an agent pursues through 5xer, recorded with its reasons",
+    "AgentRunOutcome": "nested in AgentRun — how the run ended",
+    "RunBlocker": "nested in AgentRun — the question a blocked run waits on",
+    "RunDecisionInput": "POST /v1/runs/{id}/decisions — a choice the agent made, and why",
+    "RunEvent": "nested in RunEventsPage — one recorded step of a run",
+    "RunEventsPage": "GET /v1/runs/{id}/events — a run's record after a seq, optionally long-polled",
+    "StartAgentRunInput": "POST /v1/runs — the goal, its key and its inputs",
+    # Leave and absences read by operators. Same caution as the payroll surface below: wage-adjacent
+    # shapes, bound in three SDKs once they stop moving.
+    "AbsenceItem": "nested in WorkerAbsencesPage — one absence, synced or local",
+    "WorkerAbsencesPage": "GET /v1/workers/{id}/absences — a worker's absences, paged",
+    "WorkerAbsencesQuery": "the window and cursor on GET /v1/workers/{id}/absences",
+    "DepartedLeaveSettlement": "POST /v1/workers/{id}/settle-leave — leave settled after removal",
+    "UnsettledLeaver": "GET /v1/workers/leave-settlements — a removed person whose leave is not settled",
+    "LeavePayPortion": "nested in PayrollWorker — one portion of leave pay and who pays it",
     # The live-ops overview. An operator screen's read, polled by the console; bound in
     # three SDKs once the shape has lived through a few releases of the page it serves.
     "LiveOverview": "GET /v1/stats/live — the queue by lane, flow, every worker's state, post cover",
@@ -142,6 +160,14 @@ PLANNED = {
     "PlannedHoursResult": "GET /v1/roster/planned-hours — the rota-side half of the same arithmetic",
     "PlannedWorkerHours": "nested in PlannedHoursResult; PayrollWorker extends it",
     "PlannedShiftBreakdown": "nested in PlannedWorkerHours — one planned shift's minutes by bracket",
+    "PlannedPositionHours": "nested in PlannedWorkerHours — one rate a person was paid at over the period, from the rate card",
+    "RoleStretchInput": "PUT /v1/workers/{id}/time-entries/{entryId}/roles — a manager stating which role part of a shift was worked in",
+    "RoleStretch": "nested in WorkerTimeEntry — one stretch of a shift spent in one role, with the role's name",
+    "SetTimeEntryRolesInput": "PUT /v1/workers/{id}/time-entries/{entryId}/roles — the roles and the reason",
+    "SetTimeEntryRolesResult": "PUT /v1/workers/{id}/time-entries/{entryId}/roles — the roles as stored, and the correction that records them",
+    "WorkerRoleChoice": "nested in WorkerRolesResult — a role a worker can clock in as",
+    "WorkerRolesResult": "GET /v1/portal/me/roles — the worker portal's own read; the portal has its own client",
+    "SwitchRoleResult": "POST /v1/portal/me/role — the worker portal's own write; the portal has its own client",
     "PlannedDayHours": "nested in PlannedHoursResult — the day series the planning view charts",
     # Worker schedule preferences (wishes). Workspace and portal wire types,
     # tracked alongside GET/PUT /v1/roster/terms/{workerId}/preferences and

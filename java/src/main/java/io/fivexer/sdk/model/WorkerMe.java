@@ -22,6 +22,9 @@ public class WorkerMe {
     private Boolean emailNotices;
     /** Which kinds of push this worker still wants, keyed by category id. */
     private java.util.Map<String, Boolean> pushCategories;
+    private List<BreakCoverageWarning> breakCoverageWarnings;
+    private String photoUrl;
+    private Boolean photoUploads;
 
     public String getWorkerId() { return workerId; }
     public String getLabel() { return label; }
@@ -34,4 +37,15 @@ public class WorkerMe {
     public String getLocale() { return locale; }
     public Boolean getEmailNotices() { return emailNotices; }
     public java.util.Map<String, Boolean> getPushCategories() { return pushCategories; }
+
+    /** Shifts the worker's running break leaves short (advisory). Empty when none. */
+    public List<BreakCoverageWarning> getBreakCoverageWarnings() {
+        return breakCoverageWarnings == null ? List.of() : breakCoverageWarnings;
+    }
+
+    /** Their profile photo, origin-relative; null when they have none. */
+    public String getPhotoUrl() { return photoUrl; }
+
+    /** Whether this deployment can store a photo at all. */
+    public boolean getPhotoUploads() { return Boolean.TRUE.equals(photoUploads); }
 }

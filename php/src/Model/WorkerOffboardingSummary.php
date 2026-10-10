@@ -28,6 +28,12 @@ final class WorkerOffboardingSummary
         public readonly int $pendingTimeOff,
         public readonly int $leavePolicies,
         public readonly int $teams,
+        /** Leave settled on the last day; null on older servers. */
+        public readonly ?LeavePayout $leavePayout = null,
+        /** Approved leave after the last day, which removal cancels (or cuts short) so it is not paid twice. */
+        public readonly int $futureLeave = 0,
+        /** Why the leave settlement could not be worked out, or null. Removal carries on without it. */
+        public readonly ?string $leaveSettlementError = null,
     ) {
     }
 
@@ -48,6 +54,9 @@ final class WorkerOffboardingSummary
             pendingTimeOff: (int) ($data['pendingTimeOff'] ?? 0),
             leavePolicies: (int) ($data['leavePolicies'] ?? 0),
             teams: (int) ($data['teams'] ?? 0),
+            leavePayout: \is_array($data['leavePayout'] ?? null) ? LeavePayout::fromArray($data['leavePayout']) : null,
+            futureLeave: (int) ($data['futureLeave'] ?? 0),
+            leaveSettlementError: isset($data['leaveSettlementError']) ? (string) $data['leaveSettlementError'] : null,
         );
     }
 }

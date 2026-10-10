@@ -16,6 +16,7 @@ public class PublicWorkerIdentity {
     private String activatedAt;
     private String createdAt;
     private String revokedAt;
+    private String photoUrl;
 
     public String getId() { return id; }
     public String getWorkerId() { return workerId; }
@@ -26,4 +27,7 @@ public class PublicWorkerIdentity {
     public String getActivatedAt() { return activatedAt; }
     public String getCreatedAt() { return createdAt; }
     public String getRevokedAt() { return revokedAt; }
+
+    /** Their profile photo, origin-relative; null when they have none. */
+    public String getPhotoUrl() { return photoUrl; }
 }

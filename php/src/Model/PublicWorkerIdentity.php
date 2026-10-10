@@ -23,6 +23,8 @@ final class PublicWorkerIdentity
         /** ISO-8601 */
         public readonly string $createdAt,
         public readonly ?string $revokedAt,
+        /** Their profile photo, origin-relative; null when they have none. */
+        public readonly ?string $photoUrl = null,
     ) {
     }
 
@@ -42,6 +44,7 @@ final class PublicWorkerIdentity
             activatedAt: isset($data['activatedAt']) ? (string) $data['activatedAt'] : null,
             createdAt: (string) ($data['createdAt'] ?? ''),
             revokedAt: isset($data['revokedAt']) ? (string) $data['revokedAt'] : null,
+            photoUrl: isset($data['photoUrl']) ? (string) $data['photoUrl'] : null,
         );
     }
 }

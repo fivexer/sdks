@@ -20,6 +20,9 @@ public class WorkerOffboardingSummary {
     private int pendingTimeOff;
     private int leavePolicies;
     private int teams;
+    private LeavePayout leavePayout;
+    private Integer futureLeave;
+    private String leaveSettlementError;
 
     public String getWorkerId() { return workerId; }
 
@@ -38,6 +41,15 @@ public class WorkerOffboardingSummary {
     public int getPendingTimeOff() { return pendingTimeOff; }
     public int getLeavePolicies() { return leavePolicies; }
     public int getTeams() { return teams; }
+
+    /** Leave settled on the last day; null on older servers. */
+    public LeavePayout getLeavePayout() { return leavePayout; }
+
+    /** Approved leave after the last day, which removal cancels (or cuts short) so it is not paid twice. */
+    public int getFutureLeave() { return futureLeave == null ? 0 : futureLeave; }
+
+    /** Why the leave settlement could not be worked out, or null. Removal carries on without it. */
+    public String getLeaveSettlementError() { return leaveSettlementError; }
 
     /** Held work by state. */
     public static class TaskCounts {

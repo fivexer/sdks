@@ -17,6 +17,7 @@ public class WorkflowStep {
     private String name;
     private String taskType;   // assignment | machine | external
     private Map<String, Object> assignmentTemplate;
+    private WorkflowStepData data;
     private Object targetUser; // "initiator" | "previous" | a worker id | {"tag": "..."}
     private Map<String, Object> machineTask;
     private Map<String, Object> external;
@@ -46,6 +47,7 @@ public class WorkflowStep {
     public String getName() { return name; }
     public String getTaskType() { return taskType; }
     public Map<String, Object> getAssignmentTemplate() { return assignmentTemplate; }
+    public WorkflowStepData getData() { return data; }
     public Object getTargetUser() { return targetUser; }
     public Map<String, Object> getMachineTask() { return machineTask; }
     public Map<String, Object> getExternal() { return external; }
@@ -62,6 +64,7 @@ public class WorkflowStep {
 
     public WorkflowStep taskType(String taskType) { this.taskType = taskType; return this; }
     public WorkflowStep assignmentTemplate(Map<String, Object> t) { this.assignmentTemplate = t; return this; }
+    public WorkflowStep data(WorkflowStepData data) { this.data = data; return this; }
     public WorkflowStep targetUser(Object targetUser) { this.targetUser = targetUser; return this; }
     public WorkflowStep machineTask(Map<String, Object> t) { this.machineTask = t; return this; }
     public WorkflowStep external(Map<String, Object> external) { this.external = external; return this; }

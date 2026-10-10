@@ -31,6 +31,8 @@ final class CorrectTimeEntryInput
         private ?array $breaks = null,
         private ?string $description = null,
         private ?string $taskId = null,
+        /** @var list<RoleStretchInput>|null */
+        private ?array $roles = null,
     ) {
     }
 
@@ -99,6 +101,18 @@ final class CorrectTimeEntryInput
     }
 
     /** Shifts only: the task this time was spent on. */
+    /**
+     * The roles the shift was worked in, each a stretch of it. Each id must be a role on the
+     * rate card. On a correction this replaces what is recorded, saved atomically with the rest.
+     *
+     * @param list<RoleStretchInput> $roles
+     */
+    public function roles(array $roles): self
+    {
+        $this->roles = $roles;
+        return $this;
+    }
+
     public function taskId(string $taskId): self
     {
         $this->taskId = $taskId;
@@ -128,6 +142,7 @@ final class CorrectTimeEntryInput
             'breaks' => Json::each($this->breaks),
             'description' => $this->description,
             'taskId' => $this->taskId,
+            'roles' => Json::each($this->roles),
         ]);
         foreach (\array_keys($this->cleared) as $field) {
             $payload[$field] = null;
