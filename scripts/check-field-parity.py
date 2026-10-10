@@ -115,6 +115,8 @@ PLANNED = {
     "StartAgentRunInput": "POST /v1/runs — the goal, its key and its inputs",
     "SaveRunAsWorkflowResult": "POST /v1/runs/{id}/workflow — the workflow a run became, and its gaps",
     "WorkflowCompileGap": "nested in SaveRunAsWorkflowResult — what a run's record cannot vouch for",
+    "RunTask": "GET /v1/runs/{id}/tasks — a task as a run's record knows it",
+    "TaskRunLink": "GET /v1/tasks/{id}/run — the run a task was part of",
     # Leave and absences read by operators. Same caution as the payroll surface below: wage-adjacent
     # shapes, bound in three SDKs once they stop moving.
     "AbsenceItem": "nested in WorkerAbsencesPage — one absence, synced or local",
