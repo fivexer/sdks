@@ -1,0 +1,67 @@
+{
+  "model": "claude-opus-5-5",
+  "effortLevel": "medium",
+  "env": {
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/../assignment-engine/scripts/claude/claude-validation.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/../assignment-engine/scripts/claude/claude-validation.py\" hook",
+            "timeout": 15
+          }
+        ],
+        "matcher": "Edit|Write|Bash|NotebookEdit|Agent|Task"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/../assignment-engine/scripts/claude/claude-validation.py\" hook",
+            "timeout": 15
+          }
+        ],
+        "matcher": "Edit|Write|Bash|NotebookEdit|Agent|Task"
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/../assignment-engine/scripts/claude/claude-validation.py\" hook",
+            "timeout": 15
+          }
+        ],
+        "matcher": "Edit|Write|Bash|NotebookEdit|Agent|Task"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/../assignment-engine/scripts/claude/claude-validation.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

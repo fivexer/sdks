@@ -4206,6 +4206,10 @@ class JoinLink:
     created_at: str = ""
     expires_at: str = ""
     revoked_at: str | None = None
+    #: 'agent' for a link that connects an AI agent; 'people' for one people scan.
+    kind: str = "people"
+    #: For an agent link: the worker the agent will assist.
+    owner_worker_id: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> JoinLink:
@@ -4221,6 +4225,8 @@ class JoinLink:
             created_at=data.get("createdAt", ""),
             expires_at=data.get("expiresAt", ""),
             revoked_at=data.get("revokedAt"),
+            kind=data.get("kind") or "people",
+            owner_worker_id=data.get("ownerWorkerId"),
         )
 
 

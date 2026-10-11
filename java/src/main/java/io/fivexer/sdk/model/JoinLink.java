@@ -20,6 +20,8 @@ public class JoinLink {
     private String createdAt;
     private String expiresAt;
     private String revokedAt;
+    private String kind;
+    private String ownerWorkerId;
 
     public String getId() { return id; }
     public String getLabel() { return label; }
@@ -32,4 +34,8 @@ public class JoinLink {
     public String getCreatedAt() { return createdAt; }
     public String getExpiresAt() { return expiresAt; }
     public String getRevokedAt() { return revokedAt; }
+    /** {@code agent} for a link that connects an AI agent; {@code people} (or null, from an older API) otherwise. */
+    public String getKind() { return kind; }
+    /** For an agent link: the worker the agent will assist. */
+    public String getOwnerWorkerId() { return ownerWorkerId; }
 }

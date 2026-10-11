@@ -1259,6 +1259,10 @@ planned:
     - { method: GET, path: "/v1/portal/preferences/outcome" }
     # "Nothing has changed" — the worker's answer to a wish window without an edit.
     - { method: POST, path: "/v1/portal/preferences/confirm" }
+    # Agent runs from the executor's side: join or open the run for a held task.
+    # The agent daemon is the only caller and reaches it with its session token;
+    # bound once the run surface settles.
+    - { method: POST, path: "/v1/portal/tasks/{id}/run" }
     - { method: GET, path: "/v1/supervisor/timeoff" }
     - { method: POST, path: "/v1/supervisor/timeoff/{id}/approve" }
     - { method: POST, path: "/v1/supervisor/timeoff/{id}/deny" }
@@ -1345,6 +1349,24 @@ planned:
     - { method: GET, path: "/v1/team/time/payroll/export" }
     - { method: GET, path: "/v1/workers/{id}/task-time" }
     - { method: PATCH, path: "/v1/workers/{id}/time-entries/{entryId}/metadata" }
+    # Roles — what an hour is paid as. A manager stating or changing the role of a
+    # worker's shift, and the worker portal's own picker. Bound with the rest of the
+    # working-time record; the TypeScript SDK has them (workers.setTimeEntryRoles,
+    # workers.switchRole, worker.roles, worker.switchRole).
+    - { method: PUT, path: "/v1/workers/{id}/time-entries/{entryId}/roles" }
+    - { method: POST, path: "/v1/workers/{id}/role" }
+    - { method: GET, path: "/v1/portal/me/roles" }
+    - { method: POST, path: "/v1/portal/me/role" }
+    # Agents as executors: who can help, connecting an agent, a worker's own assistant.
+    # The TypeScript SDK has them (executors.list, agentLinks.create, worker.assistants,
+    # worker.createAssistantLink); the MCP who_can_help / delegate tools read them.
+    - { method: GET, path: "/v1/executors" }
+    - { method: POST, path: "/v1/agent-links" }
+    - { method: GET, path: "/v1/portal/me/assistants" }
+    - { method: POST, path: "/v1/portal/me/assistant-link" }
+    - { method: GET, path: "/v1/hosted-agents" }
+    - { method: POST, path: "/v1/hosted-agents" }
+    - { method: DELETE, path: "/v1/hosted-agents/{workerId}" }
     # Intake (the inbox tray), skill imports and suggestions. Console-driven
     # workflows with no hand-written consumer yet.
     - { method: POST, path: "/v1/intake/messages" }

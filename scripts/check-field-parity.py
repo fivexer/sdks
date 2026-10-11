@@ -117,6 +117,17 @@ PLANNED = {
     "WorkflowCompileGap": "nested in SaveRunAsWorkflowResult — what a run's record cannot vouch for",
     "RunTask": "GET /v1/runs/{id}/tasks — a task as a run's record knows it",
     "TaskRunLink": "GET /v1/tasks/{id}/run — the run a task was part of",
+    # Agents as executors (platform doc 87, 2026-10-10). The TypeScript SDK and the MCP tools
+    # (who_can_help, plain-language delegate) carry them first.
+    "Executor": "nested in WhoCanHelp — one person or agent, their skills, and whether they are online",
+    "SkillAvailability": "nested in WhoCanHelp — who holds a skill and how many are online",
+    "WhoCanHelp": "GET /v1/executors — who can do what right now",
+    "NamedSkill": "nested in CreateAgentLinkInput — a skill named in plain words, with a level",
+    "CreateAgentLinkInput": "POST /v1/agent-links — the agent's name, owner and skills",
+    "AgentLinkResult": "POST /v1/agent-links — the one-line connect command, shown once",
+    "WorkerAssistant": "GET /v1/portal/me/assistants — the worker portal's own read; the portal has its own client",
+    "HostedAgent": "GET/POST /v1/hosted-agents — an agent running at Anthropic or OpenAI, connected as a worker",
+    "ConnectHostedAgentInput": "POST /v1/hosted-agents — the provider, its key, the agent's id and its skills",
     # Leave and absences read by operators. Same caution as the payroll surface below: wage-adjacent
     # shapes, bound in three SDKs once they stop moving.
     "AbsenceItem": "nested in WorkerAbsencesPage — one absence, synced or local",

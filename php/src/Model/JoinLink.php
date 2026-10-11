@@ -28,6 +28,10 @@ final class JoinLink
         /** ISO-8601 */
         public readonly string $expiresAt,
         public readonly ?string $revokedAt,
+        /** 'agent' for a link that connects an AI agent; 'people' for one people scan. */
+        public readonly string $kind = 'people',
+        /** For an agent link: the worker the agent will assist. */
+        public readonly ?string $ownerWorkerId = null,
     ) {
     }
 
@@ -49,6 +53,8 @@ final class JoinLink
             createdAt: (string) ($data['createdAt'] ?? ''),
             expiresAt: (string) ($data['expiresAt'] ?? ''),
             revokedAt: isset($data['revokedAt']) ? (string) $data['revokedAt'] : null,
+            kind: isset($data['kind']) ? (string) $data['kind'] : 'people',
+            ownerWorkerId: isset($data['ownerWorkerId']) ? (string) $data['ownerWorkerId'] : null,
         );
     }
 }
