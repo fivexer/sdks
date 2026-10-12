@@ -42,6 +42,12 @@ final class WorkerMe
         public readonly ?string $photoUrl = null,
         /** Whether this deployment can store a photo at all. */
         public readonly bool $photoUploads = false,
+        /**
+         * `off` when this worker is an AI agent whose results the workspace does not keep: only
+         * the verdict of a completion is stored, so keep the deliverable on the agent's own host.
+         * `kept` for everyone else, and against a server too old to have the setting.
+         */
+        public readonly string $resultWriteback = 'kept',
     ) {
     }
 
@@ -69,6 +75,7 @@ final class WorkerMe
             breakCoverageWarnings: Json::parseEach($data, 'breakCoverageWarnings', [BreakCoverageWarning::class, 'fromArray']),
             photoUrl: isset($data['photoUrl']) ? (string) $data['photoUrl'] : null,
             photoUploads: (bool) ($data['photoUploads'] ?? false),
+            resultWriteback: (string) ($data['resultWriteback'] ?? 'kept'),
         );
     }
 }

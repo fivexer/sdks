@@ -18,6 +18,7 @@ public class TaskContext {
     private ResultContract resultContract;
     private Long createdAt;
     private Long updatedAt;
+    private String contentState;
 
     public String getTaskId() { return taskId; }
     public String getTitle() { return title; }
@@ -28,4 +29,10 @@ public class TaskContext {
     public ResultContract getResultContract() { return resultContract; }
     public Long getCreatedAt() { return createdAt; }
     public Long getUpdatedAt() { return updatedAt; }
+
+    /**
+     * Short-lived content that cannot be shown, and why: {@code expired} (the window passed) or
+     * {@code withheld} (this caller may not read it). Null when shown as stored.
+     */
+    public String getContentState() { return contentState; }
 }

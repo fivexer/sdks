@@ -952,6 +952,9 @@ class TaskContext:
     result_contract: ResultContract | None = None
     created_at: int | None = None
     updated_at: int | None = None
+    #: Short-lived content that cannot be shown, and why: "expired" (the window passed) or "withheld"
+    #: (this caller may not read it). None when the description and context are shown as stored.
+    content_state: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> TaskContext:
@@ -964,6 +967,7 @@ class TaskContext:
             result_contract=_contract_or_none(data),
             created_at=data.get("createdAt"),
             updated_at=data.get("updatedAt"),
+            content_state=data.get("contentState"),
         )
 
 
@@ -2776,6 +2780,9 @@ class WorkerTaskDetail:
     # The requester's definition of done; a completion that misses its schema is refused
     result_contract: ResultContract | None = None
     created_at: int | None = None
+    #: Short-lived content that cannot be shown, and why: "expired" (the window passed) or "withheld"
+    #: (this caller may not read it). None when the description and context are shown as stored.
+    content_state: str | None = None
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerTaskDetail:
@@ -2790,6 +2797,7 @@ class WorkerTaskDetail:
             references=_each_or_none(data, "references", TaskReference.from_json),
             result_contract=_contract_or_none(data),
             created_at=data.get("createdAt"),
+            content_state=data.get("contentState"),
         )
 
 
@@ -3133,6 +3141,10 @@ class WorkerMe:
     photo_url: str | None = None
     #: Whether this deployment can store a photo at all.
     photo_uploads: bool = False
+    #: ``off`` when this worker is an AI agent whose results the workspace does not keep: only the
+    #: verdict of a completion is stored, so keep the deliverable on the agent's own host.
+    #: ``kept`` for everyone else, and against a server too old to have the setting.
+    result_writeback: str = "kept"
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> WorkerMe:
@@ -3151,6 +3163,7 @@ class WorkerMe:
             break_coverage_warnings=_each(data, "breakCoverageWarnings", BreakCoverageWarning.from_json),
             photo_url=data.get("photoUrl"),
             photo_uploads=bool(data.get("photoUploads", False)),
+            result_writeback=str(data.get("resultWriteback", "kept")),
         )
 
 

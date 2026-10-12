@@ -25,6 +25,7 @@ public class WorkerMe {
     private List<BreakCoverageWarning> breakCoverageWarnings;
     private String photoUrl;
     private Boolean photoUploads;
+    private String resultWriteback;
 
     public String getWorkerId() { return workerId; }
     public String getLabel() { return label; }
@@ -48,4 +49,11 @@ public class WorkerMe {
 
     /** Whether this deployment can store a photo at all. */
     public boolean getPhotoUploads() { return Boolean.TRUE.equals(photoUploads); }
+
+    /**
+     * {@code off} when this worker is an AI agent whose results the workspace does not keep: only
+     * the verdict of a completion is stored, so keep the deliverable on the agent's own host.
+     * {@code kept} for everyone else, and against a server too old to have the setting.
+     */
+    public String getResultWriteback() { return resultWriteback == null ? "kept" : resultWriteback; }
 }

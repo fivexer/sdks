@@ -20,6 +20,7 @@ public class WorkerTaskDetail {
     private List<TaskReference> references;
     private ResultContract resultContract;
     private Long createdAt;
+    private String contentState;
 
     public String getId() { return id; }
     public String getStatus() { return status; }
@@ -32,4 +33,10 @@ public class WorkerTaskDetail {
     /** The requester's definition of done; a completion that misses its schema is refused. */
     public ResultContract getResultContract() { return resultContract; }
     public Long getCreatedAt() { return createdAt; }
+
+    /**
+     * Short-lived content that cannot be shown, and why: {@code expired} (the window passed) or
+     * {@code withheld} (this caller may not read it). Null when shown as stored.
+     */
+    public String getContentState() { return contentState; }
 }
